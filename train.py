@@ -201,29 +201,6 @@ def loss_fn(model, idx, targets):
     return loss, logits
 
 
-# We are using JAX, we don't require a context manager `torch.no_grad()` since
-# JAX do not track gradients unless explicitly asked via nnx.grad or equiv.
-def estimate_loss_pytorch_copy(rngs: nnx.Rngs, model):
-    out = {}
-    model.eval()
-    for split in ["train", "val"]:
-        losses = jnp.zeros(EVAL_ITERS)
-        for k in range(EVAL_ITERS):
-            # Because of dynamic index slicing in `get_batch`, we can't jit the
-            # `estimate_loss` function.
-            x, y = get_batch(rngs, split, block_size=BLOCK_SIZE, batch_size=BATCH_SIZE)
-            loss, _ = loss_fn(model, x, y)
-            # JAX arrays are immutable so cannot do losses[k] = loss like in pytorch.
-            # The problem with this code is that losses.at[k].set(loss) creates a new
-            # copy losses of len(losses). That is not memory efficient. In JAX, you
-            # would want to jax.lax.scan this instead which we will cover in the full
-            # jax-ified bigram.py
-            losses = losses.at[k].set(loss)
-        out[split] = losses.mean()
-    model.train()
-    return out
-
-
 @nnx.jit
 def estimate_loss(rngs: nnx.Rngs, model):
     def eval_step(_, step_data: jnp.ndarray) -> tuple[None, jnp.ndarray]:
