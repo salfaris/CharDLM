@@ -236,7 +236,6 @@ def train_step(model, optimizer: nnx.Optimizer, metrics: nnx.MultiMetric, idx, t
     optimizer.update(model, grads)
 
 
-# Super simple bigram model
 model = GPT(
     vocab_size=VOCAB_SIZE,
     n_embd=N_EMBD,
@@ -246,7 +245,6 @@ model = GPT(
     dropout_rate=DROPOUT,
     rngs=rngs,
 )
-# We are using JAX, No need model.to(device)
 
 # Compute number of parameters in model (including non-trainable weights like dropout)
 params = nnx.state(model)
