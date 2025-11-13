@@ -1,0 +1,29 @@
+flax: 0.12.0
+jax: 0.8.0
+optax: 0.2.6
+step 0: train loss 4.1934, val los 4.1931
+step 500: train loss 2.6704, val los 2.6515
+step 1000: train loss 2.5117, val los 2.5161
+step 1500: train loss 2.4537, val los 2.4618
+step 2000: train loss 2.4358, val los 2.4396
+step 2500: train loss 2.4294, val los 2.4317
+step 3000: train loss 2.4077, val los 2.4237
+step 3500: train loss 2.3935, val los 2.4148
+step 4000: train loss 2.3911, val los 2.4060
+step 4500: train loss 2.3898, val los 2.3972
+
+ICPONORINGEO bes.
+
+BENEd don mmithe sel s'tt yous me, he yorsh:
+Asbea gh har'spt est shomes ioffamy alll's adongh Ant npee,
+Tor bews me cing agersh.Mal wous thath So thamy mpul me.
+
+Um wechy, aknd ms ng
+Whande verey atllle meing and adernoem hand pine lak:
+Cand in herpllend ast whu
+Whe hast pamerte your,
+selucthe haw ld, aigas.
+Whe, cart thaiteolanler the, pore
+Het
+I Souns henay lgs helise, eshar ss my, te jifure hay iswo? tigrl dilean,
+He wirm ceiome tro IOGMO: ser art thackint pesum ha thetl I

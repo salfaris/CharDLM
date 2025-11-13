@@ -1,0 +1,40 @@
+flax: 0.12.0
+jax: 0.8.0
+optax: 0.2.6
+step 0: train loss 4.6162, val los 4.6239
+step 500: train loss 2.4152, val los 2.4192
+step 1000: train loss 2.2668, val los 2.3000
+step 1500: train loss 2.1769, val los 2.2197
+step 2000: train loss 2.1420, val los 2.1868
+step 2500: train loss 2.0984, val los 2.1433
+step 3000: train loss 2.0454, val los 2.1134
+step 3500: train loss 2.0216, val los 2.1117
+step 4000: train loss 2.0173, val los 2.1105
+step 4500: train loss 1.9959, val los 2.0954
+
+Aset
+Our bess off my all 't a on thAu nor to joid baster: in sagers contreous this soo that uspulemf.
+
+Umade, sauke tome not would I pry:
+'Time meing and adernoel have preshenconismplink, apchend a to tu
+Which, have,
+And your ceild.
+
+MENARGANNE:
+Was But for Bady
+I seol, let thy, poon
+Of a mastes heng:
+You had ach eshards ampired jaid, burdeid.
+
+Nas kind,
+Won,
+He ward I in
+Ey so I, do shemSert'dly, int prill have'et well, to nembly, say stay.
+
+Alles.
+
+BEOLANE:
+Whereel:
+As connsany your with a, fr
+
+344.17 seconds

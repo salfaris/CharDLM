@@ -1,0 +1,28 @@
+flax: 0.12.0
+jax: 0.8.0
+optax: 0.2.6
+step 0: train loss 4.1558, val los 4.1556
+step 500: train loss 2.6983, val los 2.6885
+step 1000: train loss 2.4838, val los 2.4952
+step 1500: train loss 2.4063, val los 2.4247
+step 2000: train loss 2.3687, val los 2.3825
+step 2500: train loss 2.3520, val los 2.3605
+step 3000: train loss 2.3107, val los 2.3450
+step 3500: train loss 2.2932, val los 2.3326
+step 4000: train loss 2.2877, val los 2.3089
+step 4500: train loss 2.2774, val los 2.2929
+
+Whinbespe youmpel, ham thef,
+Your try har thin, yoowh:
+Avena gowh, 'opt et
+Os omes ifffams all 'apato vif hanntee,
+Tor be suse cing safrsh.
+GULERTRK: hon So thamyurpull fing, fit, you breams not wo le I pry a llokicesat cur adernoe man, uple
+Hat o
+Cand it herach nde and tu; I cot hanghertctell moselucte forw thave has.
+Whif cor doursteolthly ure'd pore
+Hat
+I Sou so htay lod hely cor: har son, crold ad hell, diswie therl dile nouttherom crioul tro IOGMO:
+I
+NSONDUCUS:
+The proum ha Cubt wen thakine

@@ -1,0 +1,32 @@
+flax: 0.12.0
+jax: 0.8.0
+optax: 0.2.6
+step 0: train loss 4.2012, val los 4.2002
+step 500: train loss 2.6292, val los 2.6274
+step 1000: train loss 2.4464, val los 2.4526
+step 1500: train loss 2.3744, val los 2.3803
+step 2000: train loss 2.3403, val los 2.3471
+step 2500: train loss 2.3238, val los 2.3263
+step 3000: train loss 2.2858, val los 2.3054
+step 3500: train loss 2.2685, val los 2.2953
+step 4000: train loss 2.2627, val los 2.2788
+step 4500: train loss 2.2517, val los 2.2615
+
+Woberld youm!
+
+And minghas, de'd!
+BEOR:
+E, we yous onotblak hed, 'tht ethes of so offams all 't a on grout nree,
+Tor bews me wings gerch.
+
+NLERGRK: af soo thamy hould, ing, fit, you breams not wo le I pry a lame meing and aderneell nothpins lak:
+Is prin heapledid a to Rug I cot hanghartcty,
+Ameselucte for the, andas my If cort thasteort lee thy, pore
+Hat
+I Sou so hou thre hely fore hir so my, the af hellly iswse thill dilean,
+He wrom; bioul tro Ired
+
+Ne
+Noret'd.
+LOLE:
+Losto ha Cultle st ankinemb
