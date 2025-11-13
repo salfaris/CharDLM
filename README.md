@@ -1,2 +1,3 @@
-# nanogpt-jax
-JAX implementation of Andrej Karpathy's legendary nanogpt
+# nano-diffusion-jax
+
+Character-level diffusion language model implemented in JAX.
