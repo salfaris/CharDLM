@@ -132,7 +132,7 @@ class Block(nnx.Module):
         return x
 
 
-class BigramLanguageModel(nnx.Module):
+class GPT(nnx.Module):
     def __init__(
         self,
         vocab_size: int,

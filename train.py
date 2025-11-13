@@ -11,7 +11,7 @@ import optax
 import orbax.checkpoint as ocp
 from flax import nnx
 
-from model import BigramLanguageModel
+from model import GPT
 
 logging.basicConfig(
     level=logging.INFO,  # Set the logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
@@ -260,7 +260,7 @@ def train_step(model, optimizer: nnx.Optimizer, metrics: nnx.MultiMetric, idx, t
 
 
 # Super simple bigram model
-model = BigramLanguageModel(
+model = GPT(
     vocab_size=VOCAB_SIZE,
     n_embd=N_EMBD,
     num_heads=N_HEAD,
