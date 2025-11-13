@@ -201,7 +201,7 @@ class GPT(nnx.Module):
             idx_cond = idx[:, -self.block_size :]
 
             # Get the predictions
-            logits, _ = self(idx_cond)  # dim = (B, C)
+            logits = self(idx_cond)  # dim = (B, C)
 
             # Focus only on current_idx last time step (get idx -1 on Time index)
             logits = logits[:, -1, :]
@@ -254,7 +254,7 @@ class GPT(nnx.Module):
             )
 
             # Get the predictions
-            logits, _ = self(idx_cond)  # dim = (B, C)
+            logits = self(idx_cond)  # dim = (B, C)
 
             # Focus only on the last time step (get idx -1 on Time index)
             logits = logits[:, -1, :]  # dim = (B, C)
