@@ -197,8 +197,29 @@ def get_batch(
 # through all operations inside the function, which in this case includes `loss_fn`.
 # This reduces trace complexity.
 def loss_fn(model, idx, targets):
-    logits, loss = model(idx, targets)
+    logits = model(idx)
+
+    B, T, C = logits.shape
+    logits = logits.reshape(B * T, C)
+    targets = targets.reshape(B * T)
+    loss = jnp.mean(
+        # Can verify softmax using the average ~= -log(1/VOCAB_SIZE) = 4.17.
+        optax.softmax_cross_entropy_with_integer_labels(logits, targets)
+    )
     return loss, logits
+
+
+@nnx.jit
+def train_step(model, optimizer: nnx.Optimizer, metrics: nnx.MultiMetric, idx, targets):
+    """Train for a single step."""
+    grad_fn = nnx.value_and_grad(loss_fn, has_aux=True)
+    # Notice we don't require a "zero grad" operation like in pytorch where we would
+    # done something like `optimizer.zero_grad()` because JAX doesn't have gradient
+    # accumulation by default like pytorch. Instead, gradients are fresh per function
+    # call.
+    (loss, logits), grads = grad_fn(model, idx, targets)
+    metrics.update(loss=loss, logits=logits)
+    optimizer.update(model, grads)
 
 
 @nnx.jit
@@ -221,19 +242,6 @@ def estimate_loss(rngs: nnx.Rngs, model):
 
     model.train()
     return out
-
-
-@nnx.jit
-def train_step(model, optimizer: nnx.Optimizer, metrics: nnx.MultiMetric, idx, targets):
-    """Train for a single step."""
-    grad_fn = nnx.value_and_grad(loss_fn, has_aux=True)
-    # Notice we don't require a "zero grad" operation like in pytorch where we would
-    # done something like `optimizer.zero_grad()` because JAX doesn't have gradient
-    # accumulation by default like pytorch. Instead, gradients are fresh per function
-    # call.
-    (loss, logits), grads = grad_fn(model, idx, targets)
-    metrics.update(loss=loss)
-    optimizer.update(model, grads)
 
 
 model = GPT(

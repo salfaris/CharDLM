@@ -174,10 +174,8 @@ class GPT(nnx.Module):
         self.ln_f = nnx.LayerNorm(n_embd, rngs=rngs)  # Final layer norm
         self.lm_head = nnx.Linear(n_embd, vocab_size, rngs=rngs)
 
-    def __call__(
-        self, idx: jnp.ndarray, targets: jnp.ndarray | None = None
-    ) -> jnp.ndarray:
-        B, T = idx.shape
+    def __call__(self, idx: jnp.ndarray) -> jnp.ndarray:
+        _, T = idx.shape
 
         # Think of logits as scores for the next char in the sequence.
         tok_emb = self.token_embedding_table(idx)  # (Batch, Time, Channel) = (B, T, C)
@@ -192,20 +190,7 @@ class GPT(nnx.Module):
         x = self.ln_f(x)  # (B, T, C)
         logits = self.lm_head(x)  # (B, T, VOCAB_SIZE)
 
-        if targets is None:
-            loss = None
-        else:
-            B, T, C = logits.shape
-            logits = logits.reshape(B * T, C)
-            targets = targets.reshape(B * T)
-
-            loss = jnp.mean(
-                # Can verify softmax using the average ~= -log(1/VOCAB_SIZE) = 4.17.
-                optax.softmax_cross_entropy_with_integer_labels(logits, targets)
-            )
-
-        # !!! Logits is dim (B, T, C) if targets is None else (B*T, C)
-        return logits, loss
+        return logits
 
     def generate(
         self, idx: jnp.ndarray, max_new_tokens: int, rngs: nnx.Rngs
