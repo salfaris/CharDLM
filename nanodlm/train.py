@@ -8,10 +8,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
-import orbax.checkpoint as ocp
 from flax import nnx
 
-from nanodlm.loader import load_checkpoint
+from nanodlm.loader import load_checkpoint, save_checkpoint, set_ckpt_dir
 from nanodlm.model import GPT
 
 logging.basicConfig(
@@ -27,19 +26,7 @@ logging.getLogger("orbax").setLevel(logging.WARNING)
 logging.getLogger("absl").setLevel(logging.WARNING)  # Orbax uses absl logging
 logging.getLogger(__name__).setLevel(logging.INFO)
 
-ckpt_dir = Path(__file__).parent.resolve() / "ckpt/attention_ckpts/"
-ckpt_dir.mkdir(exist_ok=True, parents=True)
-
-options = ocp.CheckpointManagerOptions(
-    max_to_keep=3,  # Keep only the 3 most recent checkpoints
-    create=True,
-)
-
-checkpoint_manager = ocp.CheckpointManager(
-    ckpt_dir,
-    options=options,
-)
-
+ckpt_dir = set_ckpt_dir()
 
 logging.info(f"flax: {flax.__version__}")
 logging.info(f"jax: {jax.__version__}")
@@ -286,13 +273,7 @@ if not GENERATE_ONLY:
             )
 
             # Save checkpoint
-            checkpoint_manager.save(
-                iters,
-                args=ocp.args.Composite(
-                    model_state=ocp.args.PyTreeSave(nnx.state(model)),
-                    optimizer_state=ocp.args.PyTreeSave(nnx.state(optimizer)),
-                ),
-            )
+            save_checkpoint(ckpt_dir, iters, model, optimizer)
 
         # Sample a batch of data
         xb, yb = get_batch(
@@ -360,5 +341,3 @@ else:
 # Total time elapsed
 time_elapsed = time.perf_counter() - start_time
 logging.info(f"{time_elapsed:.2f} seconds total.")
-
-checkpoint_manager.close()
