@@ -11,6 +11,7 @@ import optax
 import orbax.checkpoint as ocp
 from flax import nnx
 
+from nanodlm.loader import load_checkpoint
 from nanodlm.model import GPT
 
 logging.basicConfig(
@@ -319,23 +320,7 @@ else:
     logging.info("GENERATE ONLY:")
     gen_start_time = time.perf_counter()
 
-    model_state = nnx.state(model)
-    optimizer_state = nnx.state(optimizer)
-
-    with ocp.CheckpointManager(
-        ckpt_dir, options=ocp.CheckpointManagerOptions(read_only=True)
-    ) as read_mgr:
-        step = read_mgr.latest_step()
-        restored = read_mgr.restore(
-            step,
-            args=ocp.args.Composite(
-                model_state=ocp.args.PyTreeRestore(item=model_state),
-                optimizer_state=ocp.args.PyTreeRestore(item=optimizer_state),
-            ),
-        )
-
-    nnx.update(model, restored["model_state"])
-    nnx.update(optimizer, restored["optimizer_state"])
+    load_checkpoint(ckpt_dir, model, optimizer)
 
     # Generate from the model
     model.eval()
