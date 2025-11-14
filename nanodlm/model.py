@@ -194,38 +194,38 @@ class GPT(nnx.Module):
 
         return logits
 
-    def generate(
-        self, idx: jnp.ndarray, max_new_tokens: int, rngs: nnx.Rngs
-    ) -> jnp.ndarray:
-        # idx is (B, T) array of indices in current context.
-        for _ in range(max_new_tokens):
-            # Crop idx to the last self.block_size tokens (since we are now doing pos encoding)
-            idx_cond = idx[:, -self.block_size :]
+    # def generate(
+    #     self, idx: jnp.ndarray, max_new_tokens: int, rngs: nnx.Rngs
+    # ) -> jnp.ndarray:
+    #     # idx is (B, T) array of indices in current context.
+    #     for _ in range(max_new_tokens):
+    #         # Crop idx to the last self.block_size tokens (since we are now doing pos encoding)
+    #         idx_cond = idx[:, -self.block_size :]
 
-            # Get the predictions
-            logits = self(idx_cond)  # dim = (B, C)
+    #         # Get the predictions
+    #         logits = self(idx_cond)  # dim = (B, C)
 
-            # Focus only on current_idx last time step (get idx -1 on Time index)
-            logits = logits[:, -1, :]
+    #         # Focus only on current_idx last time step (get idx -1 on Time index)
+    #         logits = logits[:, -1, :]
 
-            # jax.random.categorical is more similar to torch.multinomial.
-            # Notice we don't require apply softmax to logits since rngs.categorical
-            # expects logits rather than probabilities.
-            # Also notice, reshape (B, 1) because cannot concat (B, T) with (B,), require
-            # reshape to concat (B, T) with (B, 1) --> (B, T+1).
-            idx_next = rngs.categorical(logits).reshape(
-                logits.shape[0], 1
-            )  # dim = (B,) -> (B, 1)
+    #         # jax.random.categorical is more similar to torch.multinomial.
+    #         # Notice we don't require apply softmax to logits since rngs.categorical
+    #         # expects logits rather than probabilities.
+    #         # Also notice, reshape (B, 1) because cannot concat (B, T) with (B,), require
+    #         # reshape to concat (B, T) with (B, 1) --> (B, T+1).
+    #         idx_next = rngs.categorical(logits).reshape(
+    #             logits.shape[0], 1
+    #         )  # dim = (B,) -> (B, 1)
 
-            # Append sampled index to the running idx sequence
-            idx = jnp.concat([idx, idx_next], axis=1)  # dim = (B, T+1)
+    #         # Append sampled index to the running idx sequence
+    #         idx = jnp.concat([idx, idx_next], axis=1)  # dim = (B, T+1)
 
-        return idx
+    #     return idx
 
     @nnx.jit
-    def generate_step_js(self, padded_tokens, sample_index, rngs):
+    def generate_step(self, padded_tokens, sample_index, rngs):
         logits = self(padded_tokens)
-        # equivalent to logits[0][sample_index]
+
         # logits = logits[:, sample_index, :].squeeze(0)  # this is not jit-able
         logits = logits[0][sample_index]
 
@@ -234,16 +234,16 @@ class GPT(nnx.Module):
 
         return next_token
 
-    def generate_text_js(
+    def generate_text(
         self,
-        dataset_obj: CharacterLevelDataset,
+        dataset: CharacterLevelDataset,
         max_tokens: int,
         start_tokens: list,
         rngs,
     ):
         generated = []
 
-        print(dataset_obj.decode(start_tokens), flush=True, end="")
+        print(dataset.decode(start_tokens), flush=True, end="")
         for _ in range(max_tokens):
             sample_index = len(start_tokens) + len(generated) - 1
 
@@ -255,11 +255,11 @@ class GPT(nnx.Module):
             padded_tokens = padded_tokens[-self.block_size :]  # Truncate to block size
             padded_tokens = jnp.array(padded_tokens).reshape(1, -1)
 
-            next_token = int(self.generate_step_js(padded_tokens, sample_index, rngs))  # type: ignore
+            next_token = int(self.generate_step(padded_tokens, sample_index, rngs))  # type: ignore
             generated.append(next_token)
-            print(dataset_obj.decode([next_token]), flush=True, end="")
+            print(dataset.decode([next_token]), flush=True, end="")
 
-        return dataset_obj.decode(start_tokens + generated)
+        return dataset.decode(start_tokens + generated)
 
     @nnx.jit(static_argnums=(2,))
     def generate_fast(

@@ -15,6 +15,22 @@ def set_ckpt_dir(ckpt_dir: str | Path | None = None):
     return ckpt_dir
 
 
+def load_model_from_checkpoint(ckpt_dir, model):
+    """Load a checkpoint into model and optimizer in-place."""
+    options = ocp.CheckpointManagerOptions(read_only=True)
+    with ocp.CheckpointManager(ckpt_dir, options=options) as read_manager:
+        step = read_manager.latest_step()
+        restored = read_manager.restore(
+            step,
+            args=ocp.args.Composite(
+                model_state=ocp.args.PyTreeRestore(item=nnx.state(model)),  # type: ignore
+            ),
+        )
+
+    nnx.update(model, restored["model_state"])
+    return model
+
+
 def load_checkpoint(ckpt_dir, model, optimizer):
     """Load a checkpoint into model and optimizer in-place."""
     options = ocp.CheckpointManagerOptions(read_only=True)

@@ -1,6 +1,5 @@
 import logging
 import time
-from pathlib import Path
 from typing import Literal
 
 import flax
@@ -11,7 +10,7 @@ import optax
 from flax import nnx
 
 from nanodlm.dataset import load_shakespeare_dataset
-from nanodlm.loader import load_checkpoint, save_checkpoint, set_ckpt_dir
+from nanodlm.loader import save_checkpoint, set_ckpt_dir
 from nanodlm.model import GPT
 
 logging.basicConfig(
@@ -25,6 +24,7 @@ logging.basicConfig(
 # Reduce Orbax logging verbosity
 logging.getLogger("orbax").setLevel(logging.WARNING)
 logging.getLogger("absl").setLevel(logging.WARNING)  # Orbax uses absl logging
+logging.getLogger("jax").setLevel(logging.ERROR)
 logging.getLogger(__name__).setLevel(logging.INFO)
 
 ckpt_dir = set_ckpt_dir()
@@ -67,7 +67,6 @@ elif default_device.platform == "cpu":
 # N_HEAD = 6  # Number of attention heads
 # N_LAYER = 6  # Number of block layers
 # DROPOUT = 0.2
-GENERATE_ONLY = True
 
 # # Hyperparameters
 BATCH_SIZE = 32  # How many independent sequences will be process in parallel?
@@ -96,7 +95,6 @@ logging.info(f"N_LAYER: {N_LAYER}")
 logging.info(f"DROPOUT: {DROPOUT}")
 logging.info("--" * 12)
 
-start_time = time.perf_counter()
 
 # Load dataset
 dataset = load_shakespeare_dataset(train_split=0.9)
@@ -245,104 +243,57 @@ optimizer = nnx.Optimizer(
     model, optax.adamw(learning_rate=LEARNING_RATE), wrt=nnx.Param
 )
 
-if not GENERATE_ONLY:
-    metrics = nnx.MultiMetric(
-        loss=nnx.metrics.Average("loss")
-        # accuracy=nnx.metrics.Accuracy(),
-    )
+metrics = nnx.MultiMetric(
+    loss=nnx.metrics.Average("loss")
+    # accuracy=nnx.metrics.Accuracy(),
+)
 
-    for iters in range(MAX_ITERS):
-        model.train()
+training_start_time = time.perf_counter()
 
-        # Every once in a while evaluate the loss on train and val sets
-        if iters % EVAL_INTERVAL == 0:
-            losses = estimate_loss(rngs, model)
+for iters in range(MAX_ITERS):
+    model.train()
 
-            logging.info(
-                f"step {iters}: train loss {losses['train']:.4f}, val los {losses['val']:.4f}"
-            )
+    # Every once in a while evaluate the loss on train and val sets
+    if iters % EVAL_INTERVAL == 0:
+        losses = estimate_loss(rngs, model)
 
-            # Save checkpoint
-            save_checkpoint(ckpt_dir, iters, model, optimizer)
-
-        # Sample a batch of data
-        xb, yb = get_batch(
-            rngs,
-            train_data,
-            num_samples=1,
-            batch_size=BATCH_SIZE,
-            block_size=BLOCK_SIZE,
+        logging.info(
+            f"step {iters}: train loss {losses['train']:.4f}, val los {losses['val']:.4f}"
         )
-        xb = jnp.squeeze(xb, axis=0)
-        yb = jnp.squeeze(yb, axis=0)
 
-        # Evaluate the loss
-        train_step(model, optimizer, metrics, xb, yb)
+        # Save checkpoint
+        save_checkpoint(ckpt_dir, iters, model, optimizer)
 
-    # Generate from the model
-    model.eval()
-    context = jnp.zeros((1, 1), dtype=jnp.int32)
-    logging.info(
-        decode(model.generate(context, max_new_tokens=500, rngs=rngs)[0].tolist())
+    # Sample a batch of data
+    xb, yb = get_batch(
+        rngs,
+        train_data,
+        num_samples=1,
+        batch_size=BATCH_SIZE,
+        block_size=BLOCK_SIZE,
     )
+    xb = jnp.squeeze(xb, axis=0)
+    yb = jnp.squeeze(yb, axis=0)
 
+    # Evaluate the loss
+    train_step(model, optimizer, metrics, xb, yb)
 
-else:
-    logging.info("GENERATE ONLY:")
-    gen_start_time = time.perf_counter()
+# Generate from the model
+model.eval()
 
-    load_checkpoint(ckpt_dir, model, optimizer)
-
-    # Generate from the model
-    model.eval()
-    logging.info("Generating from zero context (using generate_fast)")
-
-    # Use one or few tokens from actual text, e.g. "ROMEO:"
-    context_str = "ROMEO: Have you"
-    context = jnp.array([encode(context_str)], dtype=jnp.int32)
-    # context = jnp.zeros((1, 1), dtype=jnp.int32)
-
-    max_new_tokens = 500
-
-    logging.info("FAST")
-    logging.info(
-        decode(
-            model.generate_fast(  # type: ignore
-                context,
-                max_new_tokens=max_new_tokens,
-                rngs=rngs,
-            )[0].tolist()
-        )
+context = jnp.zeros((1, 1), dtype=jnp.int32)
+logging.info("Generating from trained model:")
+print("--" * 20)
+print(
+    model.generate_text(
+        dataset,
+        max_tokens=500,
+        start_tokens=context[0].tolist(),
+        rngs=rngs,
     )
-
-    time_elapsed = time.perf_counter() - gen_start_time
-    logging.info(f"{time_elapsed:.2f} seconds for decode FAST.")
-
-    logging.info("Don't know? SLOW or SLOWER? JAX AI STACK IMPLEMENTATION GO BRRR")
-    logging.info(
-        model.generate_text_js(
-            dataset,
-            max_tokens=max_new_tokens,
-            start_tokens=context[0].tolist(),
-            rngs=rngs,
-        )
-    )
-
-    time_elapsed = time.perf_counter() - time_elapsed - gen_start_time
-    logging.info(f"{time_elapsed:.2f} seconds for decode SLOW.")
-
-    logging.info("SLOW")
-    logging.info(
-        decode(
-            model.generate(context, max_new_tokens=max_new_tokens, rngs=rngs)[
-                0
-            ].tolist()
-        )
-    )
-
-    time_elapsed = time.perf_counter() - time_elapsed - gen_start_time
-    logging.info(f"{time_elapsed:.2f} seconds for decode SLOW.")
+)
+print("--" * 20)
 
 # Total time elapsed
-time_elapsed = time.perf_counter() - start_time
+time_elapsed = time.perf_counter() - training_start_time
 logging.info(f"{time_elapsed:.2f} seconds total.")
