@@ -5,7 +5,6 @@ from typing import Literal, cast
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 import optax
 from flax import nnx
 
@@ -18,7 +17,7 @@ from nanodlm.utils import log_model_size, log_system_info, setup_logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
-ckpt_dir = set_ckpt_dir()
+ckpt_dir = set_ckpt_dir(name="nanogpt")
 
 log_system_info()
 

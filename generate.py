@@ -12,7 +12,7 @@ from nanodlm.utils import setup_logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
-ckpt_dir = set_ckpt_dir()
+ckpt_dir = set_ckpt_dir(name="nanogpt")
 
 dataset = load_shakespeare_dataset()
 

@@ -4,15 +4,15 @@ import orbax.checkpoint as ocp
 from flax import nnx
 
 MAX_CHECKPOINTS_TO_KEEP = 3
-DEFAULT_CKPT_DIR = Path(__file__).parents[1].resolve() / "ckpt/nanodlm/"
+DEFAULT_CKPT_BASE_DIR = Path(__file__).parents[1].resolve() / "ckpt"
 
 
-def set_ckpt_dir(ckpt_dir: str | Path | None = None):
+def set_ckpt_dir(ckpt_dir: str | Path | None = None, name: str = "nanodlm") -> str:
     """Set the global checkpoint directory."""
     if ckpt_dir is None:
-        ckpt_dir = DEFAULT_CKPT_DIR
+        ckpt_dir = DEFAULT_CKPT_BASE_DIR / name
     ensure_dir(ckpt_dir)
-    return ckpt_dir
+    return str(ckpt_dir)
 
 
 def load_model_from_checkpoint(ckpt_dir, model):
