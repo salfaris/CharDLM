@@ -62,22 +62,6 @@ def log_system_info() -> None:
         logger.info(platform_messages[default_device.platform])
 
 
-def log_hyperparameters(params: Dict[str, Any], title: str = "Hyperparameters") -> None:
-    """Log hyperparameters in a formatted way.
-
-    Args:
-        params: Dictionary of hyperparameter names and values
-        title: Optional title for the log section
-    """
-    logger = logging.getLogger(__name__)
-    logger.info("--" * 12)
-    if title:
-        logger.info(title)
-    for key, value in params.items():
-        logger.info(f"{key}: {value}")
-    logger.info("--" * 12)
-
-
 def log_model_size(model: Any) -> None:
     """Log the size of a model in parameters and memory.
 
