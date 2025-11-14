@@ -11,7 +11,7 @@ import optax
 import orbax.checkpoint as ocp
 from flax import nnx
 
-from model import GPT
+from nanodlm.model import GPT
 
 logging.basicConfig(
     level=logging.INFO,  # Set the logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
