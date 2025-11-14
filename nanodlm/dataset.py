@@ -1,6 +1,9 @@
 from pathlib import Path
+from typing import Literal
 
+import jax
 import jax.numpy as jnp
+from flax import nnx
 
 
 class CharacterLevelDataset:
@@ -44,6 +47,104 @@ class CharacterLevelDataset:
     def decode(self, l: list[int]) -> str:
         """Convert list of integers to string."""
         return "".join([self.i2s[i] for i in l])
+
+    def get_batch(
+        self,
+        rngs: nnx.Rngs,
+        split: Literal["train", "val"],
+        block_size: int,
+        batch_size: int,
+    ) -> tuple[jnp.ndarray, jnp.ndarray]:
+        """Get a batch of data (non-JIT version).
+
+        Args:
+            rngs: Random number generator
+            split: Which split to use ("train" or "val")
+            block_size: Sequence length
+            batch_size: Batch size
+
+        Returns:
+            Tuple of (inputs, targets) each with shape (batch_size, block_size)
+        """
+        data = self.train_data if split == "train" else self.val_data
+
+        maxval = len(data) - block_size
+        start_indices = rngs.randint(shape=(batch_size,), minval=0, maxval=maxval)
+
+        x = jnp.stack([data[i : i + block_size] for i in start_indices])
+        y = jnp.stack([data[i + 1 : i + 1 + block_size] for i in start_indices])
+
+        return x, y
+
+    def get_batch_jit(
+        self,
+        rngs: nnx.Rngs,
+        split: Literal["train", "val"],
+        num_samples: int,
+        batch_size: int,
+        block_size: int,
+    ) -> tuple[jnp.ndarray, jnp.ndarray]:
+        """Get batches of data (JIT-compiled version).
+
+        Pre-generates all random indices for multiple batches, then uses
+        jax.vmap to extract sequences from the data array in a JIT-compilable way.
+
+        Args:
+            rngs: Random number generator
+            split: Which split to use ("train" or "val")
+            num_samples: Number of batches to generate
+            batch_size: Batch size
+            block_size: Sequence length
+
+        Returns:
+            Tuple of (inputs, targets) each with shape (num_samples, batch_size, block_size)
+        """
+        data = self.train_data if split == "train" else self.val_data
+        return self._get_batch_jit_impl(rngs, data, num_samples, batch_size, block_size)
+
+    @staticmethod
+    @nnx.jit(static_argnums=(2, 3, 4))
+    def _get_batch_jit_impl(
+        rngs: nnx.Rngs,
+        data: jnp.ndarray,
+        num_samples: int,
+        batch_size: int,
+        block_size: int,
+    ) -> tuple[jnp.ndarray, jnp.ndarray]:
+        """Internal JIT-compiled implementation of batch generation.
+
+        This nuanced method separation is needed because nnx.jit does not support
+        methods with `self` parameters. So we make this a static method that is
+        called by a non-jittable get_batch_jit method that provides `self` context
+        to choose between the training and validation data.
+        """
+        maxval = len(data) - block_size
+        # Generate indices with dim = (num_samples, batch_size)
+        all_indices = rngs.randint(
+            shape=(num_samples, batch_size), minval=0, maxval=maxval
+        )
+
+        def extract_sequence(
+            start_indices: jnp.ndarray,
+        ) -> tuple[jnp.ndarray, jnp.ndarray]:
+            """Extract sequences for a batch of start_indices.
+
+            Uses lax.dynamic_slice for static shapes that JAX can reason about
+            during JIT compilation. jax.vmap vectorizes over the batch dimension.
+
+            This is equivalent to the non-jittable code:
+                x = jnp.stack([data[i : i + block_size] for i in start_indices])
+            """
+            x = jax.vmap(
+                lambda idx: jax.lax.dynamic_slice(data, (idx,), (block_size,))
+            )(start_indices)
+            y = jax.vmap(
+                lambda idx: jax.lax.dynamic_slice(data, (idx + 1,), (block_size,))
+            )(start_indices)
+            return x, y
+
+        x, y = jax.vmap(extract_sequence)(all_indices)
+        return x, y
 
     @classmethod
     def from_file(

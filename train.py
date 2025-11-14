@@ -1,7 +1,7 @@
 import logging
 import time
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast
 
 import jax
 import jax.numpy as jnp
@@ -45,76 +45,11 @@ train_config = TrainConfig(smol=smol)
 # Load dataset
 dataset = load_shakespeare_dataset(train_split=0.9)
 gpt_config.vocab_size = dataset.vocab_size
-train_data = dataset.train_data
-val_data = dataset.val_data
 
 logger.info("--" * 12)
 logger.info(f"GPT Config: {gpt_config}")
 logger.info(f"Train Config: {train_config}")
 logger.info("--" * 12)
-
-
-def get_batch_not_jittable(
-    rngs: nnx.Rngs,
-    split: Literal["train", "val"],
-    block_size: int,
-    batch_size: int,
-):
-    """Shakespeare data loader that mimics Karpathy's pytorch implementation."""
-    # Generate a small batch of data of inputs x and targets y
-    data = train_data if split == "train" else val_data
-
-    maxval = len(data) - block_size
-    start_indices = rngs.randint(shape=(batch_size,), minval=0, maxval=maxval)
-
-    x = jnp.stack([data[i : i + block_size] for i in start_indices])
-    y = jnp.stack([data[i + 1 : i + 1 + block_size] for i in start_indices])
-
-    return x, y
-
-
-@nnx.jit(static_argnums=(2, 3, 4))
-def get_batch(
-    rngs: nnx.Rngs,
-    data: jnp.ndarray,
-    num_samples: int,
-    batch_size: int,
-    block_size: int,
-) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """Shakespeare data loader that is JIT-compilable.
-
-    Pre-generate all random indices for the batch based on num_samples, then use
-    jax.vmap to extract sequences from the data array.
-    """
-    maxval = len(data) - block_size
-    # Generate indices with dim = (num_samples, batch_size).
-    all_indices = rngs.randint(shape=(num_samples, batch_size), minval=0, maxval=maxval)
-
-    def extract_sequence(start_indices: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
-        """Extract sequences for a batch of start_indices.
-
-        Don't let the jax.vmap and lax.dynamic_slice scare you!
-        lax.dynamic_slice is just a way to do slicing with static shapes that JAX
-        can reason about during JIT compilation. jax.vmap is just a way to vectorize
-        operations over a batch dimension.
-
-        This:
-            x = jax.vmap(lambda idx: jax.lax.dynamic_slice(data, (idx,), (block_size,)))(
-                start_indices
-            )
-        is equivalent to the non-jitable code below:
-            x = jnp.stack([data[i : i + block_size] for i in start_indices])
-        """
-        x = jax.vmap(lambda idx: jax.lax.dynamic_slice(data, (idx,), (block_size,)))(
-            start_indices
-        )
-        y = jax.vmap(
-            lambda idx: jax.lax.dynamic_slice(data, (idx + 1,), (block_size,))
-        )(start_indices)
-        return x, y
-
-    x, y = jax.vmap(extract_sequence)(all_indices)
-    return x, y
 
 
 # We don't jit `loss_fn` because we will be using it within the training (train_step)
@@ -158,10 +93,10 @@ def estimate_loss(rngs: nnx.Rngs, model):
     out = {}
     model.eval()
 
-    for split, data in [("train", train_data), ("val", val_data)]:
-        x, y = get_batch(
+    for split in ["train", "val"]:
+        x, y = dataset.get_batch_jit(
             rngs,
-            data,
+            cast(Literal["train", "val"], split),
             train_config.eval_iters,
             train_config.batch_size,
             gpt_config.block_size,
@@ -202,9 +137,9 @@ for iters in range(train_config.max_iters):
         save_checkpoint(ckpt_dir, iters, model, optimizer)
 
     # Sample a batch of data
-    xb, yb = get_batch(
-        rngs,
-        train_data,
+    xb, yb = dataset.get_batch_jit(
+        rngs=rngs,
+        split="train",
         num_samples=1,
         batch_size=train_config.batch_size,
         block_size=gpt_config.block_size,
