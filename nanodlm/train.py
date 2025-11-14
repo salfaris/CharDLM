@@ -10,6 +10,7 @@ import numpy as np
 import optax
 from flax import nnx
 
+from nanodlm.dataset import load_shakespeare_dataset
 from nanodlm.loader import load_checkpoint, save_checkpoint, set_ckpt_dir
 from nanodlm.model import GPT
 
@@ -97,24 +98,13 @@ logging.info("--" * 12)
 
 start_time = time.perf_counter()
 
-# !curl -O https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt
-with open("input.txt", "r", encoding="utf-8") as f:
-    text = f.read()
-
-# Get all the unique characters in the text.
-chars = sorted(list(set(text)))
-VOCAB_SIZE = len(chars)
-# Map chars to ints.
-s2i = {ch: i for i, ch in enumerate(chars)}
-i2s = {i: ch for i, ch in enumerate(chars)}
-encode = lambda s: [s2i[c] for c in s]
-decode = lambda l: "".join([i2s[i] for i in l])
-
-# Train test splits
-data = jnp.array(encode(text), dtype=jnp.int32)
-n = int(0.9 * len(data))
-train_data = data[:n]
-val_data = data[n:]
+# Load dataset
+dataset = load_shakespeare_dataset(train_split=0.9)
+VOCAB_SIZE = dataset.vocab_size
+encode = dataset.encode
+decode = dataset.decode
+train_data = dataset.train_data
+val_data = dataset.val_data
 
 
 def get_batch_not_jittable(
@@ -309,7 +299,7 @@ else:
 
     # Use one or few tokens from actual text, e.g. "ROMEO:"
     context_str = "ROMEO:"
-    context = jnp.array([[s2i[c] for c in context_str]], dtype=jnp.int32)
+    context = jnp.array([encode(context_str)], dtype=jnp.int32)
     # context = jnp.zeros((1, 1), dtype=jnp.int32)
 
     max_new_tokens = 500
