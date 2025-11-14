@@ -21,6 +21,8 @@ class GPTConfig:
     n_layer: int = 6 if not smol else 3
     dropout_rate: float = 0.2 if not smol else 0.0
 
+    is_causal: bool = True
+
 
 class Buffer(nnx.Variable):
     pass
@@ -35,10 +37,16 @@ class Head(nnx.Module):
         head_size: int,
         rngs: nnx.Rngs,
     ):
+        self.is_causal = config.is_causal
+
         self.key = nnx.Linear(config.n_embd, head_size, use_bias=False, rngs=rngs)
         self.query = nnx.Linear(config.n_embd, head_size, use_bias=False, rngs=rngs)
         self.value = nnx.Linear(config.n_embd, head_size, use_bias=False, rngs=rngs)
-        self.tril = Buffer(jnp.tril(jnp.ones((config.block_size, config.block_size))))
+
+        if self.is_causal:
+            self.tril = Buffer(
+                jnp.tril(jnp.ones((config.block_size, config.block_size)))
+            )
 
         self.dropout = nnx.Dropout(config.dropout_rate, rngs=rngs)
 
@@ -53,7 +61,8 @@ class Head(nnx.Module):
         # (B, T, head_size) @ (B, head_size, T) --> (B, T, T)
         # Scaled with C := head size so that softmax leads to diffused probas.
         wei = q @ k.transpose(0, -1, -2) * (C**-0.5)
-        wei = jnp.where(self.tril[:T, :T] == 0, float("-inf"), wei)
+        if self.is_causal:
+            wei = jnp.where(self.tril[:T, :T] == 0, float("-inf"), wei)
         wei = nnx.softmax(wei, axis=-1)  # type: ignore
         wei = self.dropout(wei)  # Randomly prevent some nodes from communicating
 
@@ -64,7 +73,7 @@ class Head(nnx.Module):
 
 
 class MultiHeadAttention(nnx.Module):
-    """Mutli-head causal self-attention."""
+    """Mutli-head self-attention."""
 
     def __init__(self, config: GPTConfig, head_size: int, rngs: nnx.Rngs):
         self.heads = nnx.Sequential(
