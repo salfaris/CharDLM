@@ -31,18 +31,16 @@ class Head(nnx.Module):
 
     def __init__(
         self,
+        config: GPTConfig,
         head_size: int,
-        n_embd: int,
-        block_size: int,
-        dropout_rate: float,
         rngs: nnx.Rngs,
     ):
-        self.key = nnx.Linear(n_embd, head_size, use_bias=False, rngs=rngs)
-        self.query = nnx.Linear(n_embd, head_size, use_bias=False, rngs=rngs)
-        self.value = nnx.Linear(n_embd, head_size, use_bias=False, rngs=rngs)
-        self.tril = Buffer(jnp.tril(jnp.ones((block_size, block_size))))
+        self.key = nnx.Linear(config.n_embd, head_size, use_bias=False, rngs=rngs)
+        self.query = nnx.Linear(config.n_embd, head_size, use_bias=False, rngs=rngs)
+        self.value = nnx.Linear(config.n_embd, head_size, use_bias=False, rngs=rngs)
+        self.tril = Buffer(jnp.tril(jnp.ones((config.block_size, config.block_size))))
 
-        self.dropout = nnx.Dropout(dropout_rate, rngs=rngs)
+        self.dropout = nnx.Dropout(config.dropout_rate, rngs=rngs)
 
     def __call__(self, x: jnp.ndarray):
         _, T, C = x.shape
@@ -66,31 +64,17 @@ class Head(nnx.Module):
 
 
 class MultiHeadAttention(nnx.Module):
-    """Mutli-head self-attention."""
+    """Mutli-head causal self-attention."""
 
-    def __init__(
-        self,
-        head_size: int,
-        n_head: int,
-        n_embd: int,
-        block_size: int,
-        dropout_rate: float,
-        rngs: nnx.Rngs,
-    ):
+    def __init__(self, config: GPTConfig, head_size: int, rngs: nnx.Rngs):
         self.heads = nnx.Sequential(
             *[
-                Head(
-                    head_size,
-                    n_embd=n_embd,
-                    block_size=block_size,
-                    dropout_rate=dropout_rate,
-                    rngs=rngs,
-                )
-                for _ in range(n_head)
+                Head(config=config, head_size=head_size, rngs=rngs)
+                for _ in range(config.n_head)
             ]
         )
-        self.proj = nnx.Linear(n_embd, n_embd, rngs=rngs)
-        self.dropout = nnx.Dropout(dropout_rate, rngs=rngs)
+        self.proj = nnx.Linear(config.n_embd, config.n_embd, rngs=rngs)
+        self.dropout = nnx.Dropout(config.dropout_rate, rngs=rngs)
 
     def __call__(self, x: jnp.ndarray):
         # dim = concat along axis -1 of num_heads Heads
@@ -106,14 +90,14 @@ class MultiHeadAttention(nnx.Module):
 class FeedForward(nnx.Module):
     """A simple linear layer followed by a non-linearity."""
 
-    def __init__(self, n_embd: int, dropout_rate: float, rngs: nnx.Rngs):
+    def __init__(self, config: GPTConfig, rngs: nnx.Rngs):
         self.net = nnx.Sequential(
-            nnx.Linear(n_embd, 4 * n_embd, rngs=rngs),
+            nnx.Linear(config.n_embd, 4 * config.n_embd, rngs=rngs),
             nnx.relu,
             nnx.Linear(
-                4 * n_embd, n_embd, rngs=rngs
+                4 * config.n_embd, config.n_embd, rngs=rngs
             ),  # Projection layer into residual pathway
-            nnx.Dropout(dropout_rate, rngs=rngs),
+            nnx.Dropout(config.dropout_rate, rngs=rngs),
         )
 
     def __call__(self, x: jnp.ndarray):
@@ -123,26 +107,12 @@ class FeedForward(nnx.Module):
 class Block(nnx.Module):
     """Transformer block: communication followed by computation."""
 
-    def __init__(
-        self,
-        n_embd: int,
-        n_head: int,
-        block_size: int,
-        dropout_rate: float,
-        rngs: nnx.Rngs,
-    ):
-        head_size = n_embd // n_head
-        self.sa = MultiHeadAttention(
-            n_head=n_head,
-            head_size=head_size,
-            n_embd=n_embd,
-            block_size=block_size,
-            dropout_rate=dropout_rate,
-            rngs=rngs,
-        )
-        self.ffwd = FeedForward(n_embd, dropout_rate=dropout_rate, rngs=rngs)
-        self.ln1 = nnx.LayerNorm(n_embd, rngs=rngs)
-        self.ln2 = nnx.LayerNorm(n_embd, rngs=rngs)
+    def __init__(self, config: GPTConfig, rngs: nnx.Rngs):
+        head_size = config.n_embd // config.n_head
+        self.sa = MultiHeadAttention(config=config, head_size=head_size, rngs=rngs)
+        self.ffwd = FeedForward(config=config, rngs=rngs)
+        self.ln1 = nnx.LayerNorm(config.n_embd, rngs=rngs)
+        self.ln2 = nnx.LayerNorm(config.n_embd, rngs=rngs)
 
     def __call__(self, x: jnp.ndarray):
         x = x + self.sa(self.ln1(x))
@@ -151,12 +121,8 @@ class Block(nnx.Module):
 
 
 class GPT(nnx.Module):
-    def __init__(
-        self,
-        config: GPTConfig,
-        rngs: nnx.Rngs,
-    ):
-        self.block_size = config.block_size
+    def __init__(self, config: GPTConfig, rngs: nnx.Rngs):
+        self.block_size = config.block_size  # Use for generation.
 
         assert config.vocab_size is not None
 
@@ -166,25 +132,8 @@ class GPT(nnx.Module):
         self.positional_embedding_table = nnx.Embed(
             num_embeddings=self.block_size, features=config.n_embd, rngs=rngs
         )
-        self.sa_heads = MultiHeadAttention(
-            n_head=config.n_head,
-            head_size=config.n_embd // config.n_head,
-            n_embd=config.n_embd,
-            block_size=self.block_size,
-            dropout_rate=config.dropout_rate,
-            rngs=rngs,
-        )
         self.blocks = nnx.Sequential(
-            *[
-                Block(
-                    config.n_embd,
-                    n_head=config.n_head,
-                    block_size=config.block_size,
-                    dropout_rate=config.dropout_rate,
-                    rngs=rngs,
-                )
-                for _ in range(config.n_layer)
-            ]
+            *[Block(config=config, rngs=rngs) for _ in range(config.n_layer)]
         )
         self.ln_f = nnx.LayerNorm(config.n_embd, rngs=rngs)  # Final layer norm
         self.lm_head = nnx.Linear(config.n_embd, config.vocab_size, rngs=rngs)
