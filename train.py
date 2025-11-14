@@ -3,7 +3,6 @@ import time
 from dataclasses import dataclass
 from typing import Literal
 
-import flax
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -13,49 +12,15 @@ from flax import nnx
 from nanodlm.dataset import load_shakespeare_dataset
 from nanodlm.loader import save_checkpoint, set_ckpt_dir
 from nanodlm.model import GPT, GPTConfig
+from nanodlm.utils import log_model_size, log_system_info, setup_logging
 
-logging.basicConfig(
-    level=logging.INFO,  # Set the logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-    format="%(asctime)s: %(message)s",  # Define the log format
-    handlers=[
-        logging.StreamHandler(),  # Log to the console
-    ],
-    force=True,
-)
-# Reduce Orbax logging verbosity
-logging.getLogger("orbax").setLevel(logging.WARNING)
-logging.getLogger("absl").setLevel(logging.WARNING)  # Orbax uses absl logging
-logging.getLogger("jax").setLevel(logging.ERROR)
-logging.getLogger(__name__).setLevel(logging.INFO)
+# Setup logging
+setup_logging()
+logger = logging.getLogger(__name__)
 
 ckpt_dir = set_ckpt_dir()
 
-logging.info(f"flax: {flax.__version__}")
-logging.info(f"jax: {jax.__version__}")
-logging.info(f"optax: {optax.__version__}")
-
-devices = jax.devices()
-logging.info("JAX devices found:")
-for i, device in enumerate(devices):
-    # Each device object has platform, id, and device_kind
-    logging.info(
-        f"  [{i}] platform: {device.platform}, id: {device.id}, kind: {device.device_kind}"
-    )
-
-# Just the first/default device you're running on:
-default_device = jax.devices()[0]
-logging.info(f"Default device:")
-logging.info(f"  platform: {default_device.platform}")
-logging.info(f"  id: {default_device.id}")
-logging.info(f"  kind: {default_device.device_kind}")
-
-# Check which platform is active
-if default_device.platform == "gpu":
-    logging.info("Running on GPU!")
-elif default_device.platform == "tpu":
-    logging.info("Running on TPU!")
-elif default_device.platform == "cpu":
-    logging.info("Running on CPU!")
+log_system_info()
 
 
 @dataclass
@@ -83,10 +48,10 @@ gpt_config.vocab_size = dataset.vocab_size
 train_data = dataset.train_data
 val_data = dataset.val_data
 
-logging.info("--" * 12)
-logging.info(gpt_config)
-logging.info(train_config)
-logging.info("--" * 12)
+logger.info("--" * 12)
+logger.info(f"GPT Config: {gpt_config}")
+logger.info(f"Train Config: {train_config}")
+logger.info("--" * 12)
 
 
 def get_batch_not_jittable(
@@ -211,14 +176,7 @@ def estimate_loss(rngs: nnx.Rngs, model):
 
 
 model = GPT(gpt_config, rngs=rngs)
-
-# Compute number of parameters in model (including non-trainable weights like dropout)
-params = nnx.state(model)
-total_params = sum(map(lambda x: np.prod(x.shape), jax.tree.leaves(params)))
-total_bytes_approx = total_params * 4  # assume float32, 4 bytes per param
-logging.info(
-    f"Total parameters: {total_params:,} ({total_bytes_approx / 1024:.1f}) KB\n"
-)
+log_model_size(model)
 
 # Train the function
 optimizer = nnx.Optimizer(
@@ -239,8 +197,8 @@ for iters in range(train_config.max_iters):
     if iters % train_config.eval_interval == 0:
         losses = estimate_loss(rngs, model)
 
-        logging.info(
-            f"step {iters}: train loss {losses['train']:.4f}, val los {losses['val']:.4f}"
+        logger.info(
+            f"step {iters}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}"
         )
 
         # Save checkpoint
@@ -264,7 +222,7 @@ for iters in range(train_config.max_iters):
 model.eval()
 
 context = jnp.zeros((1, 1), dtype=jnp.int32)
-logging.info("Generating from trained model:")
+logger.info("Generating from trained model:")
 print("--" * 20)
 print(
     model.generate_text(
@@ -278,4 +236,4 @@ print("--" * 20)
 
 # Total time elapsed
 time_elapsed = time.perf_counter() - training_start_time
-logging.info(f"{time_elapsed:.2f} seconds total.")
+logger.info(f"\nTotal training time: {time_elapsed:.2f} seconds")

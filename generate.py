@@ -7,20 +7,10 @@ from flax import nnx
 from nanodlm.dataset import load_shakespeare_dataset
 from nanodlm.loader import load_model_from_checkpoint, set_ckpt_dir
 from nanodlm.model import GPT, GPTConfig
+from nanodlm.utils import setup_logging
 
-logging.basicConfig(
-    level=logging.INFO,  # Set the logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-    format="%(asctime)s: %(message)s",  # Define the log format
-    handlers=[
-        logging.StreamHandler(),  # Log to the console
-    ],
-    force=True,
-)
-# Reduce Orbax logging verbosity
-logging.getLogger("orbax").setLevel(logging.ERROR)
-logging.getLogger("absl").setLevel(logging.ERROR)  # Orbax uses absl logging
-logging.getLogger("jax").setLevel(logging.ERROR)
-logging.getLogger(__name__).setLevel(logging.INFO)
+setup_logging()
+logger = logging.getLogger(__name__)
 
 ckpt_dir = set_ckpt_dir()
 
@@ -40,7 +30,7 @@ model.eval()
 
 generate_start_time = time.perf_counter()
 
-logging.info("Generating from trained model:")
+logger.info("Generating from trained model:")
 print("--" * 20)
 print(
     model.generate_text(
@@ -53,4 +43,4 @@ print(
 print("--" * 20)
 
 time_elapsed = time.perf_counter() - generate_start_time
-logging.info(f"{time_elapsed:.2f} seconds to generate.")
+logger.info(f"Generation took {time_elapsed:.2f} seconds")
