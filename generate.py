@@ -4,15 +4,15 @@ import time
 import jax.numpy as jnp
 from flax import nnx
 
+from nanodlm.checkpoint import Checkpointer
 from nanodlm.dataset import load_shakespeare_dataset
-from nanodlm.loader import load_model_from_checkpoint, set_ckpt_dir
 from nanodlm.model import GPT, GPTConfig
 from nanodlm.utils import setup_logging
 
 setup_logging()
 logger = logging.getLogger(__name__)
 
-ckpt_dir = set_ckpt_dir(name="nanogpt")
+checkpointer = Checkpointer(name="nanogpt")
 
 dataset = load_shakespeare_dataset()
 
@@ -20,7 +20,7 @@ gpt_config = GPTConfig(smol=True, vocab_size=dataset.vocab_size)
 rngs = nnx.Rngs(44)
 
 model = GPT(gpt_config, rngs=rngs)
-model = load_model_from_checkpoint(ckpt_dir, model)
+model = checkpointer.load_model_only(model)
 logger.info(f"GPT Config: {gpt_config}")
 
 # Use one or few tokens from actual text, e.g. "ROMEO:"

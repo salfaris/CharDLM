@@ -8,8 +8,8 @@ import jax.numpy as jnp
 import optax
 from flax import nnx
 
+from nanodlm.checkpoint import Checkpointer
 from nanodlm.dataset import load_shakespeare_dataset
-from nanodlm.loader import save_checkpoint, set_ckpt_dir
 from nanodlm.model import GPT, GPTConfig
 from nanodlm.utils import log_model_size, log_system_info, setup_logging
 
@@ -17,7 +17,7 @@ from nanodlm.utils import log_model_size, log_system_info, setup_logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
-ckpt_dir = set_ckpt_dir(name="nanogpt")
+checkpointer = Checkpointer(name="nanogpt")
 
 log_system_info()
 
@@ -133,7 +133,7 @@ for iters in range(train_config.max_iters):
         )
 
         # Save checkpoint
-        save_checkpoint(ckpt_dir, iters, model, optimizer)
+        checkpointer.save(iters, model, optimizer)
 
     # Sample a batch of data
     xb, yb = dataset.get_batch_jit(
