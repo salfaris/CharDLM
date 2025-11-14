@@ -31,13 +31,10 @@ class Buffer(nnx.Variable):
 class Head(nnx.Module):
     """Single head of self-attention."""
 
-    def __init__(
-        self,
-        config: GPTConfig,
-        head_size: int,
-        rngs: nnx.Rngs,
-    ):
+    def __init__(self, config: GPTConfig, rngs: nnx.Rngs):
         self.is_causal = config.is_causal
+
+        head_size = config.n_embd // config.n_head
 
         self.key = nnx.Linear(config.n_embd, head_size, use_bias=False, rngs=rngs)
         self.query = nnx.Linear(config.n_embd, head_size, use_bias=False, rngs=rngs)
@@ -75,12 +72,9 @@ class Head(nnx.Module):
 class MultiHeadAttention(nnx.Module):
     """Mutli-head self-attention."""
 
-    def __init__(self, config: GPTConfig, head_size: int, rngs: nnx.Rngs):
+    def __init__(self, config: GPTConfig, rngs: nnx.Rngs):
         self.heads = nnx.Sequential(
-            *[
-                Head(config=config, head_size=head_size, rngs=rngs)
-                for _ in range(config.n_head)
-            ]
+            *[Head(config=config, rngs=rngs) for _ in range(config.n_head)]
         )
         self.proj = nnx.Linear(config.n_embd, config.n_embd, rngs=rngs)
         self.dropout = nnx.Dropout(config.dropout_rate, rngs=rngs)
@@ -117,8 +111,7 @@ class Block(nnx.Module):
     """Transformer block: communication followed by computation."""
 
     def __init__(self, config: GPTConfig, rngs: nnx.Rngs):
-        head_size = config.n_embd // config.n_head
-        self.sa = MultiHeadAttention(config=config, head_size=head_size, rngs=rngs)
+        self.sa = MultiHeadAttention(config=config, rngs=rngs)
         self.ffwd = FeedForward(config=config, rngs=rngs)
         self.ln1 = nnx.LayerNorm(config.n_embd, rngs=rngs)
         self.ln2 = nnx.LayerNorm(config.n_embd, rngs=rngs)
