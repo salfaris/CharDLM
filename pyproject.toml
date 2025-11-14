@@ -41,7 +41,7 @@ Repository = "https://github.com/salfaris/nano-diffusion-jax"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["nanodlm*"]
-exclude = ["notebooks*", "__pycache__*", "ckpt*"]
+exclude = ["notebooks*", "__pycache__*", "ckpt*", "dataset*"]
 
 [tool.flake8]
 max-line-length = 88

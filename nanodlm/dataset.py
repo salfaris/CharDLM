@@ -64,7 +64,7 @@ class CharacterLevelDataset:
 
 
 def load_shakespeare_dataset(train_split: float = 0.9) -> CharacterLevelDataset:
-    """Load the Shakespeare dataset from input.txt in the project root.
+    """Load the Shakespeare dataset from dataset/tiny_shakespeare.txt.
 
     Args:
         train_split: Fraction of data to use for training (default: 0.9)
@@ -73,6 +73,6 @@ def load_shakespeare_dataset(train_split: float = 0.9) -> CharacterLevelDataset:
         Dataset instance with Shakespeare text
     """
     # Download command:
-    # curl -O https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt
-    data_path = Path(__file__).parents[1] / "input.txt"
+    # curl -o dataset/tiny_shakespeare.txt https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt
+    data_path = Path(__file__).parents[1] / "dataset" / "tiny_shakespeare.txt"
     return CharacterLevelDataset.from_file(data_path, train_split)
