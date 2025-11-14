@@ -1,9 +1,25 @@
+from dataclasses import dataclass
+
 import jax
 import jax.numpy as jnp
-import optax
 from flax import nnx
 
 from nanodlm.dataset import CharacterLevelDataset
+
+
+@dataclass
+class GPTConfig:
+    """Configuration for GPT model."""
+
+    smol: bool = True
+
+    vocab_size: int | None = None
+    block_size: int = 256 if not smol else 8
+
+    n_embd: int = 384 if not smol else 32
+    n_head: int = 6 if not smol else 4
+    n_layer: int = 6 if not smol else 3
+    dropout_rate: float = 0.2 if not smol else 0.0
 
 
 class Buffer(nnx.Variable):
@@ -29,7 +45,7 @@ class Head(nnx.Module):
         self.dropout = nnx.Dropout(dropout_rate, rngs=rngs)
 
     def __call__(self, x: jnp.ndarray):
-        B, T, C = x.shape
+        _, T, C = x.shape
 
         k = self.key(x)  # (B, T, C) = (B, T, head_size)
         q = self.query(x)  # (B, T, C) = (B, T, head_size)
@@ -54,8 +70,8 @@ class MultiHeadAttention(nnx.Module):
 
     def __init__(
         self,
-        num_heads: int,
         head_size: int,
+        n_head: int,
         n_embd: int,
         block_size: int,
         dropout_rate: float,
@@ -70,7 +86,7 @@ class MultiHeadAttention(nnx.Module):
                     dropout_rate=dropout_rate,
                     rngs=rngs,
                 )
-                for _ in range(num_heads)
+                for _ in range(n_head)
             ]
         )
         self.proj = nnx.Linear(n_embd, n_embd, rngs=rngs)
@@ -110,14 +126,14 @@ class Block(nnx.Module):
     def __init__(
         self,
         n_embd: int,
-        num_heads: int,
+        n_head: int,
         block_size: int,
         dropout_rate: float,
         rngs: nnx.Rngs,
     ):
-        head_size = n_embd // num_heads
+        head_size = n_embd // n_head
         self.sa = MultiHeadAttention(
-            num_heads=num_heads,
+            n_head=n_head,
             head_size=head_size,
             n_embd=n_embd,
             block_size=block_size,
@@ -137,44 +153,41 @@ class Block(nnx.Module):
 class GPT(nnx.Module):
     def __init__(
         self,
-        vocab_size: int,
-        n_embd: int,
-        num_heads: int,
-        n_layer: int,
-        block_size: int,
-        dropout_rate: float,
+        config: GPTConfig,
         rngs: nnx.Rngs,
     ):
-        self.block_size = block_size
+        self.block_size = config.block_size
+
+        assert config.vocab_size is not None
 
         self.token_embedding_table = nnx.Embed(
-            num_embeddings=vocab_size, features=n_embd, rngs=rngs
+            num_embeddings=config.vocab_size, features=config.n_embd, rngs=rngs
         )
         self.positional_embedding_table = nnx.Embed(
-            num_embeddings=self.block_size, features=n_embd, rngs=rngs
+            num_embeddings=self.block_size, features=config.n_embd, rngs=rngs
         )
         self.sa_heads = MultiHeadAttention(
-            num_heads=num_heads,
-            head_size=n_embd // num_heads,
-            n_embd=n_embd,
-            block_size=block_size,
-            dropout_rate=dropout_rate,
+            n_head=config.n_head,
+            head_size=config.n_embd // config.n_head,
+            n_embd=config.n_embd,
+            block_size=self.block_size,
+            dropout_rate=config.dropout_rate,
             rngs=rngs,
         )
         self.blocks = nnx.Sequential(
             *[
                 Block(
-                    n_embd,
-                    num_heads=num_heads,
-                    block_size=block_size,
-                    dropout_rate=dropout_rate,
+                    config.n_embd,
+                    n_head=config.n_head,
+                    block_size=config.block_size,
+                    dropout_rate=config.dropout_rate,
                     rngs=rngs,
                 )
-                for _ in range(n_layer)
+                for _ in range(config.n_layer)
             ]
         )
-        self.ln_f = nnx.LayerNorm(n_embd, rngs=rngs)  # Final layer norm
-        self.lm_head = nnx.Linear(n_embd, vocab_size, rngs=rngs)
+        self.ln_f = nnx.LayerNorm(config.n_embd, rngs=rngs)  # Final layer norm
+        self.lm_head = nnx.Linear(config.n_embd, config.vocab_size, rngs=rngs)
 
     def __call__(self, idx: jnp.ndarray) -> jnp.ndarray:
         _, T = idx.shape

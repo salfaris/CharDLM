@@ -1,5 +1,6 @@
 import logging
 import time
+from dataclasses import dataclass
 from typing import Literal
 
 import flax
@@ -11,7 +12,7 @@ from flax import nnx
 
 from nanodlm.dataset import load_shakespeare_dataset
 from nanodlm.loader import save_checkpoint, set_ckpt_dir
-from nanodlm.model import GPT
+from nanodlm.model import GPT, GPTConfig
 
 logging.basicConfig(
     level=logging.INFO,  # Set the logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
@@ -56,53 +57,36 @@ elif default_device.platform == "tpu":
 elif default_device.platform == "cpu":
     logging.info("Running on CPU!")
 
-# # Hyperparameters
-# BATCH_SIZE = 64  # How many independent sequences will be process in parallel?
-# BLOCK_SIZE = 256  # What is the maximum context length for predictions?
-# MAX_ITERS = 5000
-# EVAL_INTERVAL = 500
-# LEARNING_RATE = 3e-4  # Decrease LR because we have deeper layers
-# EVAL_ITERS = 200
-# N_EMBD = 384  # Create a level of interaction
-# N_HEAD = 6  # Number of attention heads
-# N_LAYER = 6  # Number of block layers
-# DROPOUT = 0.2
 
-# # Hyperparameters
-BATCH_SIZE = 32  # How many independent sequences will be process in parallel?
-BLOCK_SIZE = 8  # What is the maximum context length for predictions?
-MAX_ITERS = 5000
-EVAL_INTERVAL = 500
-LEARNING_RATE = 1e-3
-EVAL_ITERS = 200
-N_EMBD = 32  # Create a level of interaction
-N_HEAD = 4  # Number of attention heads
-N_LAYER = 3  # Number of block layers
-DROPOUT = 0.0
+@dataclass
+class TrainConfig:
+    """Configuration for training."""
+
+    smol: bool = True
+
+    batch_size: int = 64 if not smol else 32
+    max_iters: int = 5000
+    eval_interval: int = 500
+    learning_rate: float = 3e-4 if not smol else 1e-3
+    eval_iters: int = 200
+
 
 rngs = nnx.Rngs(44)
 
-logging.info("--" * 12)
-logging.info(f"BATCH_SIZE: {BATCH_SIZE}")
-logging.info(f"BLOCK_SIZE: {BLOCK_SIZE}")
-logging.info(f"MAX_ITERS: {MAX_ITERS}")
-logging.info(f"EVAL_INTERVAL: {EVAL_INTERVAL}")
-logging.info(f"LEARNING_RATE: {LEARNING_RATE}")
-logging.info(f"EVAL_ITERS: {EVAL_ITERS}")
-logging.info(f"N_EMBD: {N_EMBD}")
-logging.info(f"N_HEAD: {N_HEAD}")
-logging.info(f"N_LAYER: {N_LAYER}")
-logging.info(f"DROPOUT: {DROPOUT}")
-logging.info("--" * 12)
-
+smol = True
+gpt_config = GPTConfig(smol=smol)
+train_config = TrainConfig(smol=smol)
 
 # Load dataset
 dataset = load_shakespeare_dataset(train_split=0.9)
-VOCAB_SIZE = dataset.vocab_size
-encode = dataset.encode
-decode = dataset.decode
+gpt_config.vocab_size = dataset.vocab_size
 train_data = dataset.train_data
 val_data = dataset.val_data
+
+logging.info("--" * 12)
+logging.info(gpt_config)
+logging.info(train_config)
+logging.info("--" * 12)
 
 
 def get_batch_not_jittable(
@@ -210,25 +194,23 @@ def estimate_loss(rngs: nnx.Rngs, model):
     model.eval()
 
     for split, data in [("train", train_data), ("val", val_data)]:
-        x, y = get_batch(rngs, data, EVAL_ITERS, BATCH_SIZE, BLOCK_SIZE)
+        x, y = get_batch(
+            rngs,
+            data,
+            train_config.eval_iters,
+            train_config.batch_size,
+            gpt_config.block_size,
+        )
 
         # Scan over pre-generated indices, this pattern enables jit!
-        _, losses = jax.lax.scan(eval_step, None, (x, y))
+        _, losses = jax.lax.scan(eval_step, None, (x, y))  # type: ignore
         out[split] = losses.mean()
 
     model.train()
     return out
 
 
-model = GPT(
-    vocab_size=VOCAB_SIZE,
-    n_embd=N_EMBD,
-    num_heads=N_HEAD,
-    n_layer=N_LAYER,
-    block_size=BLOCK_SIZE,
-    dropout_rate=DROPOUT,
-    rngs=rngs,
-)
+model = GPT(config=gpt_config, rngs=rngs)
 
 # Compute number of parameters in model (including non-trainable weights like dropout)
 params = nnx.state(model)
@@ -240,7 +222,7 @@ logging.info(
 
 # Train the function
 optimizer = nnx.Optimizer(
-    model, optax.adamw(learning_rate=LEARNING_RATE), wrt=nnx.Param
+    model, optax.adamw(learning_rate=train_config.learning_rate), wrt=nnx.Param
 )
 
 metrics = nnx.MultiMetric(
@@ -250,11 +232,11 @@ metrics = nnx.MultiMetric(
 
 training_start_time = time.perf_counter()
 
-for iters in range(MAX_ITERS):
+for iters in range(train_config.max_iters):
     model.train()
 
     # Every once in a while evaluate the loss on train and val sets
-    if iters % EVAL_INTERVAL == 0:
+    if iters % train_config.eval_interval == 0:
         losses = estimate_loss(rngs, model)
 
         logging.info(
@@ -269,8 +251,8 @@ for iters in range(MAX_ITERS):
         rngs,
         train_data,
         num_samples=1,
-        batch_size=BATCH_SIZE,
-        block_size=BLOCK_SIZE,
+        batch_size=train_config.batch_size,
+        block_size=gpt_config.block_size,
     )
     xb = jnp.squeeze(xb, axis=0)
     yb = jnp.squeeze(yb, axis=0)
