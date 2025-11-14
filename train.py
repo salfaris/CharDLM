@@ -183,10 +183,7 @@ optimizer = nnx.Optimizer(
     model, optax.adamw(learning_rate=train_config.learning_rate), wrt=nnx.Param
 )
 
-metrics = nnx.MultiMetric(
-    loss=nnx.metrics.Average("loss")
-    # accuracy=nnx.metrics.Accuracy(),
-)
+metrics = nnx.MultiMetric(loss=nnx.metrics.Average("loss"))
 
 training_start_time = time.perf_counter()
 
