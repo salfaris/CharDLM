@@ -210,7 +210,7 @@ def estimate_loss(rngs: nnx.Rngs, model):
     return out
 
 
-model = GPT(config=gpt_config, rngs=rngs)
+model = GPT(gpt_config, rngs=rngs)
 
 # Compute number of parameters in model (including non-trainable weights like dropout)
 params = nnx.state(model)
