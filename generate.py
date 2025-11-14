@@ -16,11 +16,12 @@ ckpt_dir = set_ckpt_dir()
 
 dataset = load_shakespeare_dataset()
 
-config = GPTConfig(smol=True, vocab_size=dataset.vocab_size)
+gpt_config = GPTConfig(smol=True, vocab_size=dataset.vocab_size)
 rngs = nnx.Rngs(44)
 
-model = GPT(config, rngs=rngs)
+model = GPT(gpt_config, rngs=rngs)
 model = load_model_from_checkpoint(ckpt_dir, model)
+logger.info(f"GPT Config: {gpt_config}")
 
 # Use one or few tokens from actual text, e.g. "ROMEO:"
 context_str = "ROMEO: Have you"
