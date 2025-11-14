@@ -3,6 +3,8 @@ import jax.numpy as jnp
 import optax
 from flax import nnx
 
+from nanodlm.dataset import CharacterLevelDataset
+
 
 class Buffer(nnx.Variable):
     pass
@@ -219,6 +221,45 @@ class GPT(nnx.Module):
             idx = jnp.concat([idx, idx_next], axis=1)  # dim = (B, T+1)
 
         return idx
+
+    @nnx.jit
+    def generate_step_js(self, padded_tokens, sample_index, rngs):
+        logits = self(padded_tokens)
+        # equivalent to logits[0][sample_index]
+        # logits = logits[:, sample_index, :].squeeze(0)  # this is not jit-able
+        logits = logits[0][sample_index]
+
+        # sample_from equiv.
+        next_token = rngs.categorical(logits)
+
+        return next_token
+
+    def generate_text_js(
+        self,
+        dataset_obj: CharacterLevelDataset,
+        max_tokens: int,
+        start_tokens: list,
+        rngs,
+    ):
+        generated = []
+
+        print(dataset_obj.decode(start_tokens), flush=True, end="")
+        for _ in range(max_tokens):
+            sample_index = len(start_tokens) + len(generated) - 1
+
+            padded_tokens = (
+                start_tokens
+                + generated
+                + [0] * (self.block_size - len(start_tokens) - len(generated))
+            )
+            padded_tokens = padded_tokens[-self.block_size :]  # Truncate to block size
+            padded_tokens = jnp.array(padded_tokens).reshape(1, -1)
+
+            next_token = int(self.generate_step_js(padded_tokens, sample_index, rngs))  # type: ignore
+            generated.append(next_token)
+            print(dataset_obj.decode([next_token]), flush=True, end="")
+
+        return dataset_obj.decode(start_tokens + generated)
 
     @nnx.jit(static_argnums=(2,))
     def generate_fast(

@@ -67,7 +67,7 @@ elif default_device.platform == "cpu":
 # N_HEAD = 6  # Number of attention heads
 # N_LAYER = 6  # Number of block layers
 # DROPOUT = 0.2
-GENERATE_ONLY = False
+GENERATE_ONLY = True
 
 # # Hyperparameters
 BATCH_SIZE = 32  # How many independent sequences will be process in parallel?
@@ -298,7 +298,7 @@ else:
     logging.info("Generating from zero context (using generate_fast)")
 
     # Use one or few tokens from actual text, e.g. "ROMEO:"
-    context_str = "ROMEO:"
+    context_str = "ROMEO: Have you"
     context = jnp.array([encode(context_str)], dtype=jnp.int32)
     # context = jnp.zeros((1, 1), dtype=jnp.int32)
 
@@ -307,14 +307,29 @@ else:
     logging.info("FAST")
     logging.info(
         decode(
-            model.generate_fast(context, max_new_tokens=max_new_tokens, rngs=rngs)[
-                0
-            ].tolist()
+            model.generate_fast(  # type: ignore
+                context,
+                max_new_tokens=max_new_tokens,
+                rngs=rngs,
+            )[0].tolist()
         )
     )
 
     time_elapsed = time.perf_counter() - gen_start_time
     logging.info(f"{time_elapsed:.2f} seconds for decode FAST.")
+
+    logging.info("Don't know? SLOW or SLOWER? JAX AI STACK IMPLEMENTATION GO BRRR")
+    logging.info(
+        model.generate_text_js(
+            dataset,
+            max_tokens=max_new_tokens,
+            start_tokens=context[0].tolist(),
+            rngs=rngs,
+        )
+    )
+
+    time_elapsed = time.perf_counter() - time_elapsed - gen_start_time
+    logging.info(f"{time_elapsed:.2f} seconds for decode SLOW.")
 
     logging.info("SLOW")
     logging.info(
