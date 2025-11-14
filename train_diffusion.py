@@ -9,19 +9,17 @@ import numpy as np
 import optax
 from flax import nnx
 
+from nanodlm.checkpoint import Checkpointer
 from nanodlm.dataset import load_shakespeare_dataset
-from nanodlm.loader import save_checkpoint, set_ckpt_dir
 from nanodlm.model import DLMConfig, NanoDiffusionLM
 from nanodlm.utils import log_model_size, log_system_info, setup_logging
 
-# Setup logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
-ckpt_dir = set_ckpt_dir()
-
 log_system_info()
 
+# For function signatures via type hints
 TrainModel = NanoDiffusionLM
 
 
@@ -127,10 +125,11 @@ log_model_size(model)
 optimizer = nnx.Optimizer(
     model, optax.adamw(learning_rate=train_config.learning_rate), wrt=nnx.Param
 )
-
 metrics = nnx.MultiMetric(loss=nnx.metrics.Average("loss"))
 
 training_start_time = time.perf_counter()
+
+checkpointer = Checkpointer(name="nanodlm")
 
 for iters in range(train_config.max_iters):
     xb, yb = dataset.get_batch_jit(
@@ -155,7 +154,7 @@ for iters in range(train_config.max_iters):
         )
 
         # Save checkpoint
-        save_checkpoint(ckpt_dir, iters, model, optimizer)
+        checkpointer.save(iters, model, optimizer)
 
         model.train()
 
