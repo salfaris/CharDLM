@@ -213,7 +213,7 @@ print(
             answer_length=500,
             num_diffusion_steps=dlm_config.diffusion_steps,
             confidence_threshold=0.9,
-        )[0].tolist()
+        ).tolist()
     )
 )
 print("--" * 20)
