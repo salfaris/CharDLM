@@ -16,12 +16,16 @@ checkpointer = Checkpointer(name="nanodlm")
 
 dataset = load_shakespeare_dataset()
 
-gpt_config = DLMConfig(smol=True, vocab_size=dataset.vocab_size)
+dlm_config = DLMConfig(
+    smol=True,
+    vocab_size=dataset.vocab_size,
+    mask_token_id=dataset.mask_token_id,
+)
 rngs = nnx.Rngs(44)
 
-model = NanoDiffusionLM(gpt_config, rngs=rngs)
+model = NanoDiffusionLM(dlm_config, rngs=rngs)
 model = checkpointer.load_model_only(model)
-logger.info(f"DLM Config: {gpt_config}")
+logger.info(f"DLM Config: {dlm_config}")
 
 # Use one or few tokens from actual text, e.g. "ROMEO:"
 context_str = "RO"
