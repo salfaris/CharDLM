@@ -101,7 +101,7 @@ def train_step(
     tb = rngs.randint(shape=(B,), minval=0, maxval=dlm_config.diffusion_steps)
 
     # Corrupt input
-    context_len = 10
+    context_len = 2
     idx_corrupted, mask = model.corrupt_input(idx, context_len, tb, rngs)
 
     grad_fn = nnx.value_and_grad(loss_fn, has_aux=True)
@@ -125,9 +125,8 @@ def estimate_loss(rngs: nnx.Rngs, model: TrainModel):
         B, _ = x.shape
         t = rngs.randint(shape=(B,), minval=0, maxval=dlm_config.diffusion_steps)
 
-        context_len = 10
+        context_len = 2
         x, mask = model.corrupt_input(x, context_len, t, rngs)
-        mask = mask.reshape(-1, 1)
 
         loss, _ = loss_fn(model, x, y, t, mask)
         return None, loss
@@ -144,6 +143,8 @@ def estimate_loss(rngs: nnx.Rngs, model: TrainModel):
         )
 
         # Scan over pre-generated indices, this pattern enables jit!
+        # Scanning is done over the num_samples dimension which is the leading
+        # dim by construction.
         _, losses = jax.lax.scan(eval_step, None, (x, y))  # type: ignore
         out[split] = losses.mean()
 
