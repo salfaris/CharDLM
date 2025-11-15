@@ -40,6 +40,7 @@ class DLMConfig(TransformerConfig):
     is_causal: bool = False
 
     diffusion_steps: int = 1000 if not smol else 100
+    mask_token_id: int | None = None
 
 
 class Buffer(nnx.Variable):
@@ -287,6 +288,10 @@ class NanoDiffusionLM(nnx.Module):
         self.block_size = config.block_size  # Use for generation.
 
         assert config.vocab_size is not None
+        assert config.mask_token_id is not None
+
+        self.mask_token_id = config.mask_token_id
+        self.diffusion_steps = config.diffusion_steps
 
         self.token_embedding_table = nnx.Embed(
             num_embeddings=config.vocab_size, features=config.n_embd, rngs=rngs
@@ -330,6 +335,28 @@ class NanoDiffusionLM(nnx.Module):
         logits = self.lm_head(x)  # (B, T, VOCAB_SIZE)
 
         return logits
+
+    def corrupt_input(
+        self, idx: jnp.ndarray, context_len: int, timesteps: jnp.ndarray, rngs: nnx.Rngs
+    ) -> tuple[jnp.ndarray, jnp.ndarray]:
+        """Corrupt input tokens based on timesteps using masking strategy."""
+        B, T = idx.shape
+
+        num_timesteps = self.diffusion_steps
+        # Linear schedule timestep
+        mask_schedule = jnp.linspace(1.0 / num_timesteps, 1.0, num_timesteps)
+        prob_mask = mask_schedule[timesteps].reshape(-1, 1)  # Shape (B, 1)
+
+        random_vals = rngs.uniform(shape=(B, T))
+        mask = random_vals < prob_mask  # Shape (B, T), dtype=bool
+
+        # Never mask the first block_size tokens
+        mask = mask.at[:, :context_len].set(False)
+
+        # Create corrupted input by replacing masked positions with mask token id
+        corrupted_idx = jnp.where(mask, self.mask_token_id, idx)
+
+        return corrupted_idx, mask
 
     # @nnx.jit
     # def generate_step(self, padded_tokens, sample_index, rngs):
