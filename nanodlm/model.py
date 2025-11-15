@@ -369,3 +369,65 @@ class NanoDiffusionLM(nnx.Module):
     #         print(dataset.decode([next_token]), flush=True, end="")
 
     #     return dataset.decode(start_tokens + generated)
+
+    def fast_dllm_decode(
+        self,
+        dataset: CharacterLevelDataset,
+        prompt: list[int],
+        answer_length: int,  # L in the fast DLLM paper
+        num_diffusion_steps: int,  # T in the fast DLLM paper
+        confidence_threshold: float,  # tau in the fast DLLM paper
+    ):
+        # This is K in the fast DLLM paper
+        num_blocks = answer_length // self.block_size
+
+        prompt_tokens = jnp.array(prompt)
+        prompt_len = len(prompt_tokens)
+
+        # Final result sequence length including initial prompt
+        seq_len = prompt_len + answer_length
+
+        x = jnp.concatenate(
+            [
+                prompt_tokens,
+                jnp.full(
+                    shape=(answer_length,),
+                    fill_value=dataset.mask_token_id,
+                    dtype=jnp.int32,
+                ),
+            ]
+        )
+
+        for k in range(1, num_blocks + 1):
+            s = prompt_len + (k - 1) * self.block_size
+            e = min(prompt_len + k * self.block_size, seq_len)
+
+            for t in range(1, num_diffusion_steps + 1):
+                # shape = (1,) here because we assume single text to generate.
+                t_batch = jnp.full(shape=(1,), fill_value=t, dtype=jnp.int32)
+
+                logits = self(x.reshape(1, -1), t_batch).squeeze(0)
+
+                block_mask = x[s:e] == dataset.mask_token_id
+                masked_positions = jnp.nonzero(block_mask)[0] + s
+                if masked_positions.size == 0:
+                    break
+
+                confidence = jnp.max(nnx.softmax(logits[masked_positions]), axis=-1)
+
+                high_conf = confidence >= confidence_threshold
+                to_unmask = high_conf
+
+                if not jnp.any(high_conf):
+                    max_idx = jnp.argmax(confidence)
+                    to_unmask = jnp.zeros_like(to_unmask).at[max_idx].set(True)
+
+                pos_to_unmask = masked_positions[to_unmask]
+                for pos in pos_to_unmask:
+                    next_token_unmask = jnp.argmax(logits[pos])
+                    x = x.at[pos].set(next_token_unmask)
+
+                if jnp.all(x[s:e] != dataset.mask_token_id):
+                    break
+
+        return x

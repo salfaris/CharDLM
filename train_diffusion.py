@@ -161,18 +161,21 @@ for iters in range(train_config.max_iters):
 # Generate from the model
 model.eval()
 
-# context = jnp.zeros((1, 1), dtype=jnp.int32)
-# logger.info("Generating from trained model:")
-# print("--" * 20)
-# print(
-#     model.generate_text(
-#         dataset,
-#         max_tokens=500,
-#         start_tokens=context[0].tolist(),
-#         rngs=rngs,
-#     )
-# )
-# print("--" * 20)
+context = jnp.zeros((1, 1), dtype=jnp.int32)
+logger.info("Generating from trained model:")
+print("--" * 20)
+print(
+    dataset.decode(
+        model.fast_dllm_decode(
+            dataset,
+            prompt=context[0].tolist(),
+            answer_length=500,
+            num_diffusion_steps=100,
+            confidence_threshold=0.9,
+        )[0].tolist()
+    )
+)
+print("--" * 20)
 
 # Total time elapsed
 time_elapsed = time.perf_counter() - training_start_time

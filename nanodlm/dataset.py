@@ -34,6 +34,14 @@ class CharacterLevelDataset:
         self.s2i: dict[str, int] = {ch: i for i, ch in enumerate(self.chars)}
         self.i2s: dict[int, str] = {i: ch for i, ch in enumerate(self.chars)}
 
+        # Add special mask token
+        mask_token = "#"
+        self.s2i[mask_token] = self.vocab_size
+        self.i2s[self.vocab_size] = mask_token
+        self.vocab_size += 1
+        self.mask_token = mask_token
+        self.mask_token_id = self.s2i[mask_token]
+
         # Encode and split data
         data = jnp.array(self.encode(text), dtype=jnp.int32)
         n = int(train_split * len(data))
