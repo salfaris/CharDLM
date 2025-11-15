@@ -14,8 +14,8 @@ from nanodlm.dataset import load_shakespeare_dataset
 from nanodlm.model import DLMConfig, NanoDiffusionLM
 from nanodlm.utils import log_model_size, log_system_info, setup_logging
 
-# !!! Remember to enable it again!
-jax.config.update("jax_disable_jit", True)
+# # !!! Remember to enable it again!
+# jax.config.update("jax_disable_jit", True)
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -73,15 +73,20 @@ def loss_fn(
     B, T, C = logits.shape
     logits = logits.reshape(B * T, C)
     targets = targets.reshape(B * T)
-    mask = mask.reshape(B * T)
+    mask = mask.reshape(B * T).astype(jnp.float32)
 
-    mask = mask.astype(jnp.bool_)
-    logits_masked = logits[mask]
-    targets_masked = targets[mask]
+    # Below pattern not allowed for jit
+    # mask = mask.astype(jnp.bool_)
+    # logits_masked = logits[mask]
+    # targets_masked = targets[mask]
+    # loss = jnp.mean(
+    #     optax.softmax_cross_entropy_with_integer_labels(logits_masked, targets_masked)
+    # )
 
-    loss = jnp.mean(
-        optax.softmax_cross_entropy_with_integer_labels(logits_masked, targets_masked)
-    )
+    per_token_loss = optax.softmax_cross_entropy_with_integer_labels(logits, targets)
+    masked_loss = per_token_loss * mask
+    num_masked = mask.sum()
+    loss = jnp.where(num_masked > 0, masked_loss.sum() / num_masked, 0.0)
     return loss, logits
 
 
@@ -118,18 +123,19 @@ def train_step(
 def estimate_loss(rngs: nnx.Rngs, model: TrainModel):
     model.eval()
 
-    def eval_step(_, step_data: jnp.ndarray) -> tuple[None, jnp.ndarray]:
+    @nnx.scan(in_axes=(nnx.Carry, 0), out_axes=(nnx.Carry, 0))
+    def eval_scan(step_rng: nnx.Rngs, step_data: jnp.ndarray):
         """Single eval step."""
         x, y = step_data
 
         B, _ = x.shape
-        t = rngs.randint(shape=(B,), minval=0, maxval=dlm_config.diffusion_steps)
+        t = step_rng.randint(shape=(B,), minval=0, maxval=dlm_config.diffusion_steps)
 
         context_len = 2
-        x, mask = model.corrupt_input(x, context_len, t, rngs)
+        x, mask = model.corrupt_input(x, context_len, t, step_rng)
 
         loss, _ = loss_fn(model, x, y, t, mask)
-        return None, loss
+        return step_rng, loss  # nnx.scan splits rngs internally
 
     out = {}
 
@@ -145,7 +151,7 @@ def estimate_loss(rngs: nnx.Rngs, model: TrainModel):
         # Scan over pre-generated indices, this pattern enables jit!
         # Scanning is done over the num_samples dimension which is the leading
         # dim by construction.
-        _, losses = jax.lax.scan(eval_step, None, (x, y))  # type: ignore
+        _, losses = eval_scan(rngs, (x, y))  # type: ignore
         out[split] = losses.mean()
 
     model.train()
