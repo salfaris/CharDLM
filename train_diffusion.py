@@ -95,7 +95,6 @@ def train_step(
     optimizer: nnx.Optimizer,
     metrics: nnx.MultiMetric,
     idx: jax.Array,
-    targets: jax.Array,
     rngs: nnx.Rngs,
 ):
     """Train for a single step."""
@@ -112,7 +111,7 @@ def train_step(
     # done something like `optimizer.zero_grad()` because JAX doesn't have gradient
     # accumulation by default like pytorch. Instead, gradients are fresh per function
     # call.
-    (loss, logits), grads = grad_fn(model, idx_corrupted, targets, tb, mask)
+    (loss, logits), grads = grad_fn(model, idx_corrupted, idx, tb, mask)
     metrics.update(loss=loss, logits=logits)
     optimizer.update(model, grads)
 
@@ -122,22 +121,20 @@ def estimate_loss(rngs: nnx.Rngs, model: TrainModel):
     model.eval()
 
     @nnx.scan(in_axes=(nnx.Carry, 0), out_axes=(nnx.Carry, 0))
-    def eval_scan(step_rng: nnx.Rngs, step_data: jnp.ndarray):
+    def eval_scan(step_rng: nnx.Rngs, x: jnp.ndarray):
         """Single eval step."""
-        x, y = step_data
-
         B, _ = x.shape
         t = step_rng.randint(shape=(B,), minval=0, maxval=dlm_config.diffusion_steps)
 
-        x, mask = model.corrupt_input(x, t, step_rng)
+        x_corrupted, mask = model.corrupt_input(x, t, step_rng)
 
-        loss, _ = loss_fn(model, x, y, t, mask)
+        loss, _ = loss_fn(model, idx=x_corrupted, targets=x, timesteps=t, mask=mask)
         return step_rng, loss  # nnx.scan splits rngs internally
 
     out = {}
 
     for split in ["train", "val"]:
-        x, y = dataset.get_batch_jit(
+        x, _ = dataset.get_batch_jit(
             rngs=rngs,
             split=cast(Literal["train", "val"], split),
             num_samples=train_config.eval_iters,
@@ -148,7 +145,7 @@ def estimate_loss(rngs: nnx.Rngs, model: TrainModel):
         # Scan over pre-generated indices, this pattern enables jit!
         # Scanning is done over the num_samples dimension which is the leading
         # dim by construction.
-        _, losses = eval_scan(rngs, (x, y))  # type: ignore
+        _, losses = eval_scan(rngs, x)  # type: ignore
         out[split] = losses.mean()
 
     model.train()
@@ -169,7 +166,7 @@ training_start_time = time.perf_counter()
 checkpointer = Checkpointer(name="nanodlm")
 
 for iters in range(train_config.max_iters):
-    xb, yb = dataset.get_batch_jit(
+    xb, _ = dataset.get_batch_jit(
         rngs=rngs,
         split="train",
         num_samples=1,
@@ -178,10 +175,9 @@ for iters in range(train_config.max_iters):
     )
     # Squeeze the num_samples dim, for train_step, num_samples is 1 anyways
     xb = jnp.squeeze(xb, axis=0)
-    yb = jnp.squeeze(yb, axis=0)
 
     # Evaluate the loss
-    train_step(model, optimizer, metrics, xb, yb, rngs=rngs)
+    train_step(model, optimizer, metrics, xb, rngs=rngs)
 
     # Every once in a while evaluate the loss on train and val sets
     if iters % train_config.eval_interval == 0:
