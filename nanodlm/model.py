@@ -38,9 +38,9 @@ class DLMConfig(TransformerConfig):
     smol: bool = True
 
     is_causal: bool = False
-    block_size: int = 256 if not smol else 8
+    block_size: int = 256 if not smol else 128
 
-    diffusion_steps: int = 1000 if not smol else 100
+    diffusion_steps: int = 100
     mask_token_id: int | None = None
 
     context_len: int = 16 if not smol else 4
@@ -70,11 +70,12 @@ class Head(nnx.Module):
 
         self.dropout = nnx.Dropout(config.dropout_rate, rngs=rngs)
 
-    def __call__(self, x: jnp.ndarray):
+    def __call__(self, x: jnp.ndarray, cache=None):
         _, T, C = x.shape
 
         k = self.key(x)  # (B, T, C) = (B, T, head_size)
         q = self.query(x)  # (B, T, C) = (B, T, head_size)
+        v = self.value(x)  # (B, T, C)
 
         # Compute attention scores ("affinities")
         # Alt use jnp.matrix_transpose(k) (designed to handle exactly this use case!)
@@ -87,7 +88,6 @@ class Head(nnx.Module):
         wei = self.dropout(wei)  # Randomly prevent some nodes from communicating
 
         # Perform the weighted aggregation of the values
-        v = self.value(x)  # (B, T, C)
         out = wei @ v  # (B, T, T) @ (B, T, C) --> (B, T, C)
         return out
 
@@ -368,47 +368,55 @@ class NanoDiffusionLM(nnx.Module):
         self,
         dataset: CharacterLevelDataset,
         prompt: list[int],
-        answer_length: int,  # L in the fast DLLM paper
-        num_diffusion_steps: int,  # T in the fast DLLM paper
         confidence_threshold: float,  # tau in the fast DLLM paper
+        dllm_block_size: int | None = None,
     ):
+        # L in the fast DLLM paper
+        new_tokens_len = self.block_size - len(prompt)
+        assert new_tokens_len > 0
+
+        if dllm_block_size is None:
+            dllm_block_size = self.block_size // 2
+        assert dllm_block_size <= self.block_size
+
         # This is K in the fast DLLM paper
-        num_blocks = answer_length // self.block_size
+        num_blocks = self.block_size // dllm_block_size
 
         prompt_tokens = jnp.array(prompt)
         prompt_len = len(prompt_tokens)
 
         # Final result sequence length including initial prompt
-        seq_len = prompt_len + answer_length
+        # seq_len = prompt_len + answer_length
+        seq_len = self.block_size
 
         x = jnp.concatenate(
             [
                 prompt_tokens,
                 jnp.full(
-                    shape=(answer_length,),
+                    shape=(new_tokens_len,),
                     fill_value=dataset.mask_token_id,
                     dtype=jnp.int32,
                 ),
             ]
         )
         print(x)
-        # prompt_len = 4, k = 1, self.block_size = 8
+        # prompt_len = 4, k = 1, dllm_block_size = 8
         # s = 4 + (1 - 1) * 8 = 4
         # e = min(4 + 1 * 8, 4 + 16) = 12
 
-        # prompt_len = 4, k = 2, self.block_size = 8
+        # prompt_len = 4, k = 2, dllm_block_size = 8
         # s = 4 + (2 - 1) * 8 = 12
         # e = min(4 + 2 * 8, 4 + 16 ) = 20 --> 20 capped to 20
         for k in range(1, num_blocks + 1):
-            s = prompt_len + (k - 1) * self.block_size
-            e = min(prompt_len + k * self.block_size, seq_len)
+            s = prompt_len + (k - 1) * dllm_block_size
+            e = min(prompt_len + k * dllm_block_size, seq_len)
 
-            for t in range(1, num_diffusion_steps + 1):
+            for t in range(1, self.diffusion_steps + 1):
                 # shape = (1,) here because we assume single text to generate.
                 t_batch = jnp.full(shape=(1,), fill_value=t, dtype=jnp.int32)
                 t_batch = jnp.clip(t_batch, 0, self.diffusion_steps - 1)
 
-                logits = self(x[s:e].reshape(1, -1), t_batch).squeeze(0)
+                logits = self(x.reshape(1, -1), t_batch).squeeze(0)
 
                 block_mask = x[s:e] == dataset.mask_token_id
                 masked_positions = jnp.nonzero(block_mask)[0] + s
