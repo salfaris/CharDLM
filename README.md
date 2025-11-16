@@ -24,11 +24,11 @@ pip install -e .
 ### Training
 
 ```bash
-python train_diffusion.py
+python train.py
 ```
 
 ### Generation
 
 ```bash
-python generate_diffusion.py
+python generate.py
 ```
