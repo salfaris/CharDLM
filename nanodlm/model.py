@@ -523,7 +523,9 @@ class NanoDiffusionLM(nnx.Module):
 
             # Scan over diffusion timesteps
             x, _ = jax.lax.scan(
-                diffusion_step, x, jnp.arange(1, self.diffusion_steps + 1)
+                diffusion_step,
+                x,
+                jnp.arange(self.diffusion_steps - 1, -1, -1),
             )
 
             if verbose:
