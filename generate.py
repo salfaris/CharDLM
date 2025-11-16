@@ -4,10 +4,10 @@ import time
 import jax.numpy as jnp
 from flax import nnx
 
-from nanodlm.checkpoint import Checkpointer
-from nanodlm.dataset import load_shakespeare_dataset
-from nanodlm.model import DLMConfig, NanoDiffusionLM
-from nanodlm.utils import setup_logging
+from chardlm.checkpoint import Checkpointer
+from chardlm.dataset import load_shakespeare_dataset
+from chardlm.model import DLMConfig, NanoDiffusionLM
+from chardlm.utils import setup_logging
 
 setup_logging()
 logger = logging.getLogger(__name__)
