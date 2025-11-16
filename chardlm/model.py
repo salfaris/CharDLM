@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 from flax import nnx
 
-from nanodlm.dataset import CharacterLevelDataset
+from chardlm.dataset import CharacterLevelDataset
 
 
 @dataclass

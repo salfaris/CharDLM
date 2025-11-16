@@ -9,10 +9,10 @@ import numpy as np
 import optax
 from flax import nnx
 
-from nanodlm.checkpoint import Checkpointer
-from nanodlm.dataset import load_shakespeare_dataset
-from nanodlm.model import DLMConfig, NanoDiffusionLM
-from nanodlm.utils import log_model_size, log_system_info, setup_logging
+from chardlm.checkpoint import Checkpointer
+from chardlm.dataset import load_shakespeare_dataset
+from chardlm.model import DLMConfig, NanoDiffusionLM
+from chardlm.utils import log_model_size, log_system_info, setup_logging
 
 # # !!! Remember to enable it again!
 # jax.config.update("jax_disable_jit", True)

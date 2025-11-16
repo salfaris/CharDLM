@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "nanodlm"
+name = "chardlm"
 version = "0.1.0"
 description = "Character-level diffusion language model implemented in JAX"
 readme = "README.md"
@@ -35,12 +35,12 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/salfaris/nano-diffusion-jax"
-Repository = "https://github.com/salfaris/nano-diffusion-jax"
+Homepage = "https://github.com/salfaris/chardlm"
+Repository = "https://github.com/salfaris/chardlm"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["nanodlm*"]
+include = ["chardlm*"]
 exclude = ["notebooks*", "__pycache__*", "ckpt*", "dataset*"]
 
 [tool.flake8]
