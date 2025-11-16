@@ -38,6 +38,7 @@ class DLMConfig(TransformerConfig):
     smol: bool = True
 
     is_causal: bool = False
+    block_size: int = 256 if not smol else 8
 
     diffusion_steps: int = 1000 if not smol else 100
     mask_token_id: int | None = None
