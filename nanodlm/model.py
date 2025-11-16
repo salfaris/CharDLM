@@ -43,7 +43,11 @@ class DLMConfig(TransformerConfig):
     diffusion_steps: int = 100
     mask_token_id: int | None = None
 
-    context_len: int = 16 if not smol else 4
+    # Context length before which no tokens are masked. This is a hyperparam for the
+    # expected prompt input. The prompt 'ROMEO: ' has context length 7. We are going
+    # to freeze this to 16 for non-smol and 8 for smol models which is an arbitrary
+    # choice.
+    context_len: int = 16 if not smol else 8
     assert context_len <= TransformerConfig.block_size
 
 
@@ -367,7 +371,7 @@ class NanoDiffusionLM(nnx.Module):
     def fast_dllm_decode(
         self,
         dataset: CharacterLevelDataset,
-        prompt: list[int],
+        prompt: list[int],  # aka context. prompt = context
         confidence_threshold: float,  # tau in the fast DLLM paper
         dllm_block_size: int | None = None,
     ):
