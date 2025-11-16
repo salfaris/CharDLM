@@ -43,13 +43,12 @@ rngs = nnx.Rngs(44)
 
 dataset = load_shakespeare_dataset(train_split=0.9)
 
-smol = True
+train_config = TrainConfig()
 dlm_config = DLMConfig(
-    smol=smol,
+    smol=train_config.smol,
     vocab_size=dataset.vocab_size,
     mask_token_id=dataset.mask_token_id,
 )
-train_config = TrainConfig(smol=smol)
 
 logger.info("--" * 12)
 logger.info(f"DLM Config: {dlm_config}")
