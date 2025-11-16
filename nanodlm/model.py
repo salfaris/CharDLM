@@ -14,14 +14,30 @@ class TransformerConfig:
     smol: bool = True
 
     vocab_size: int | None = None
-    block_size: int = 256 if not smol else 8
+    block_size: int = None  # type: ignore
 
-    n_embd: int = 384 if not smol else 32
-    n_head: int = 6 if not smol else 4
-    n_layer: int = 6 if not smol else 3
-    dropout_rate: float = 0.2 if not smol else 0.0
+    n_embd: int = None  # type: ignore
+    n_head: int = None  # type: ignore
+    n_layer: int = None  # type: ignore
+    dropout_rate: float = None  # type: ignore
 
     is_causal: bool = True
+
+    def __post_init__(self):
+        if self.block_size is None:
+            self.block_size = 8 if self.smol else 256
+
+        if self.n_embd is None:
+            self.n_embd = 32 if self.smol else 384
+
+        if self.n_head is None:
+            self.n_head = 4 if self.smol else 6
+
+        if self.n_layer is None:
+            self.n_layer = 3 if self.smol else 6
+
+        if self.dropout_rate is None:
+            self.dropout_rate = 0.0 if self.smol else 0.2
 
 
 @dataclass
