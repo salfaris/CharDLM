@@ -28,7 +28,7 @@ model = checkpointer.load_model_only(model)
 logger.info(f"DLM Config: {dlm_config}")
 
 # Use one or few tokens from actual text, e.g. "ROMEO:"
-context_str = "ROMEO: how are you"
+context_str = "ROMEO:"
 context = jnp.array([dataset.encode(context_str)], dtype=jnp.int32)
 
 model.eval()
