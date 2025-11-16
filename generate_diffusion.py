@@ -28,7 +28,7 @@ model = checkpointer.load_model_only(model)
 logger.info(f"DLM Config: {dlm_config}")
 
 # Use one or few tokens from actual text, e.g. "ROMEO:"
-context_str = "RO"
+context_str = "ROMEO: how are you"
 context = jnp.array([dataset.encode(context_str)], dtype=jnp.int32)
 
 model.eval()
@@ -42,8 +42,8 @@ print(
         model.fast_dllm_decode(
             dataset,
             prompt=context[0].tolist(),
-            answer_length=500,
-            num_diffusion_steps=100,
+            answer_length=100,
+            num_diffusion_steps=dlm_config.diffusion_steps,
             confidence_threshold=0.9,
         ).tolist()
     )

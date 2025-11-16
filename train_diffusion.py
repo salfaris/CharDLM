@@ -208,7 +208,7 @@ print(
         model.fast_dllm_decode(
             dataset,
             prompt=context[0].tolist(),
-            answer_length=500,
+            answer_length=100,
             num_diffusion_steps=dlm_config.diffusion_steps,
             confidence_threshold=0.9,
         ).tolist()
