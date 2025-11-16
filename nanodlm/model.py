@@ -375,7 +375,11 @@ class NanoDiffusionLM(nnx.Module):
         prompt: list[int],  # aka context. prompt = context
         confidence_threshold: float,  # tau in the fast DLLM paper
         dllm_block_size: int | None = None,
+        verbose: bool = True,
     ):
+        # NOTE: To see the non-jittable original version, run:
+        # git show ea37222:nanodlm/model.py | grep -A 100 "def fast_dllm_decode"
+
         # L in the fast DLLM paper
         new_tokens_len = self.block_size - len(prompt)
         assert new_tokens_len > 0
@@ -390,10 +394,6 @@ class NanoDiffusionLM(nnx.Module):
         prompt_tokens = jnp.array(prompt)
         prompt_len = len(prompt_tokens)
 
-        # Final result sequence length including initial prompt
-        # seq_len = prompt_len + answer_length
-        seq_len = self.block_size
-
         x = jnp.concatenate(
             [
                 prompt_tokens,
@@ -404,47 +404,99 @@ class NanoDiffusionLM(nnx.Module):
                 ),
             ]
         )
-        print(x)
-        # prompt_len = 4, k = 1, dllm_block_size = 8
-        # s = 4 + (1 - 1) * 8 = 4
-        # e = min(4 + 1 * 8, 4 + 16) = 12
 
-        # prompt_len = 4, k = 2, dllm_block_size = 8
-        # s = 4 + (2 - 1) * 8 = 12
-        # e = min(4 + 2 * 8, 4 + 16 ) = 20 --> 20 capped to 20
+        if verbose:
+            print(x)
+
+        # Process each block sequentially
+        # We can't use scan here easily due to dynamic slicing constraints
+        # Instead, use a Python loop (or we could use fori_loop)
         for k in range(1, num_blocks + 1):
             s = prompt_len + (k - 1) * dllm_block_size
-            e = min(prompt_len + k * dllm_block_size, seq_len)
+            e = min(prompt_len + k * dllm_block_size, self.block_size)
 
-            for t in range(1, self.diffusion_steps + 1):
-                # shape = (1,) here because we assume single text to generate.
-                t_batch = jnp.full(shape=(1,), fill_value=t, dtype=jnp.int32)
-                t_batch = jnp.clip(t_batch, 0, self.diffusion_steps - 1)
+            # Use scan for the diffusion timesteps within each block
+            def diffusion_step(x_inner, t):
+                # Check if block is fully unmasked
+                block_mask = x_inner[s:e] == dataset.mask_token_id
+                still_has_masked = jnp.any(block_mask)
 
-                logits = self(x.reshape(1, -1), t_batch).squeeze(0)
+                def do_step(x_inner):
+                    t_batch = jnp.clip(
+                        jnp.full(shape=(1,), fill_value=t, dtype=jnp.int32),
+                        0,
+                        self.diffusion_steps - 1,
+                    )
 
-                block_mask = x[s:e] == dataset.mask_token_id
-                masked_positions = jnp.nonzero(block_mask)[0] + s
-                if masked_positions.size == 0:
-                    break
+                    logits = self(x_inner.reshape(1, -1), t_batch).squeeze(0)
 
-                confidence = jnp.max(nnx.softmax(logits[masked_positions]), axis=-1)
+                    # Get masked positions within the block.
+                    # Pad with size=dllm_block_size which handles final block where
+                    # e-s < dllm_block_size. We use fill_value=-1 before adding s,
+                    # so invalid positions become s-1 after the shift.
+                    # Local because this is a mask within the x[s:e] block only.
+                    masked_positions_local = jnp.nonzero(
+                        block_mask, size=dllm_block_size, fill_value=-1
+                    )[0]
+                    num_masked = jnp.sum(block_mask)
 
-                high_conf = confidence >= confidence_threshold
-                to_unmask = high_conf
+                    # Add offset s AFTER checking validity to avoid s-1 ambiguity
+                    # safe_positions uses local indices that are valid (>= 0)
+                    safe_positions = jnp.where(
+                        masked_positions_local >= 0, masked_positions_local + s, 0
+                    )
+                    # !!! Careful that we are using 0 as the dummy index for invalid
+                    # positions since logits[safe_positions==0] means we will get logits
+                    # for position 0 in the context which can lead to unpredictable
+                    # predictions. Below we mask these values an non valid_mask and map
+                    # these indices values to -jnp.inf. This implies that they will
+                    # always fail the condfidence >= confidence_threshold check and so
+                    # so will just be unmasked greedily.
+                    logits_masked = logits[safe_positions]
+                    confidence = jnp.max(nnx.softmax(logits_masked), axis=-1)
 
-                if not jnp.any(high_conf):
-                    max_idx = jnp.argmax(confidence)
-                    to_unmask = jnp.zeros_like(to_unmask).at[max_idx].set(True)
+                    # Zero out confidence for padded positions
+                    valid_mask = jnp.arange(dllm_block_size) < num_masked
+                    confidence = jnp.where(valid_mask, confidence, -jnp.inf)
 
-                pos_to_unmask = masked_positions[to_unmask]
-                for pos in pos_to_unmask:
-                    next_token_unmask = jnp.argmax(logits[pos])
-                    x = x.at[pos].set(next_token_unmask)
+                    # Determine positions to unmask
+                    high_conf = confidence >= confidence_threshold
+                    has_high_conf = jnp.any(high_conf)
 
-                if jnp.all(x[s:e] != dataset.mask_token_id):
-                    break
+                    # If no high confidence, as in confidence==False for all positions,
+                    # unmask the zeroth index in confidence (since jnp.argmax handles
+                    # ties by returning the smallest index among ties).
+                    max_conf_idx = jnp.argmax(confidence)
+                    to_unmask = jnp.where(
+                        has_high_conf,
+                        high_conf,
+                        jnp.arange(dllm_block_size) == max_conf_idx,
+                    )
 
-            print(x)
+                    # Vectorized unmasking: get argmax for all positions at once
+                    next_tokens = jnp.argmax(logits[safe_positions], axis=-1)
+
+                    # Update x only at positions that should be unmasked and are valid
+                    # Only update where to_unmask is True and position is valid
+                    should_update = to_unmask & valid_mask
+                    updates = jnp.where(
+                        should_update, next_tokens, x_inner[safe_positions]
+                    )
+                    x_inner = x_inner.at[safe_positions].set(updates)
+
+                    return x_inner
+
+                # Use lax.cond instead of Python if
+                x_inner = jax.lax.cond(still_has_masked, do_step, lambda x: x, x_inner)
+
+                return x_inner, None
+
+            # Scan over diffusion timesteps
+            x, _ = jax.lax.scan(
+                diffusion_step, x, jnp.arange(1, self.diffusion_steps + 1)
+            )
+
+            if verbose:
+                print(x)
 
         return x
