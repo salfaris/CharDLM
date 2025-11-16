@@ -57,14 +57,14 @@ class DLMConfig(TransformerConfig):
     diffusion_steps: int = 100
     mask_token_id: int | None = None
 
-    # These will be set in __post_init__ based on smol value
-    block_size: int = None  # type: ignore
     context_len: int = None  # type: ignore
 
     def __post_init__(self):
-        # Set block_size based on smol if not explicitly provided
-        if self.block_size is None:
-            self.block_size = 128 if self.smol else 256
+        # Call parent __post_init__ to initialize inherited fields
+        super().__post_init__()
+
+        # Override block_size for DLM (different from TransformerConfig)
+        self.block_size = 128 if self.smol else 256
 
         # Set context_len based on smol if not explicitly provided
         if self.context_len is None:
