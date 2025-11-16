@@ -96,6 +96,9 @@ class Checkpointer:
         options = ocp.CheckpointManagerOptions(read_only=True)
         with ocp.CheckpointManager(self.ckpt_dir, options=options) as read_manager:
             step = read_manager.latest_step()
+            print(f"[Checkpointer] Loading model from step {step}")
+            print(f"[Checkpointer] Available steps: {read_manager.all_steps()}")
+
             restored = read_manager.restore(
                 step,
                 args=ocp.args.Composite(
@@ -104,4 +107,5 @@ class Checkpointer:
             )
 
         nnx.update(model, restored["model_state"])
+        print(f"[Checkpointer] Successfully loaded model from step {step}")
         return model
