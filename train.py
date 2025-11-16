@@ -11,7 +11,7 @@ from flax import nnx
 
 from chardlm.checkpoint import Checkpointer
 from chardlm.dataset import load_shakespeare_dataset
-from chardlm.model import DLMConfig, NanoDiffusionLM
+from chardlm.model import CharDLM, DLMConfig
 from chardlm.utils import log_model_size, log_system_info, setup_logging
 
 # # !!! Remember to enable it again!
@@ -22,8 +22,6 @@ logger = logging.getLogger(__name__)
 
 log_system_info()
 
-# For function signatures via type hints
-TrainModel = NanoDiffusionLM
 
 smol = False
 ckpt_name = "chardlm-smol" if smol else "chardlm-big"
@@ -65,7 +63,7 @@ logger.info("--" * 12)
 # through all operations inside the function, which in this case includes `loss_fn`.
 # This reduces trace complexity.
 def loss_fn(
-    model: TrainModel,
+    model: CharDLM,
     idx: jax.Array,
     targets: jax.Array,
     timesteps: jax.Array,
@@ -95,7 +93,7 @@ def loss_fn(
 
 @nnx.jit
 def train_step(
-    model: TrainModel,
+    model: CharDLM,
     optimizer: nnx.Optimizer,
     metrics: nnx.MultiMetric,
     idx: jax.Array,
@@ -121,7 +119,7 @@ def train_step(
 
 
 @nnx.jit
-def estimate_loss(rngs: nnx.Rngs, model: TrainModel):
+def estimate_loss(rngs: nnx.Rngs, model: CharDLM):
     model.eval()
 
     @nnx.scan(in_axes=(nnx.Carry, 0), out_axes=(nnx.Carry, 0))
@@ -156,7 +154,7 @@ def estimate_loss(rngs: nnx.Rngs, model: TrainModel):
     return out
 
 
-model = NanoDiffusionLM(dlm_config, rngs=rngs)
+model = CharDLM(dlm_config, rngs=rngs)
 log_model_size(model)
 
 # Train the function

@@ -168,7 +168,7 @@ class Block(nnx.Module):
         return x
 
 
-class NanoDiffusionLM(nnx.Module):
+class CharDLM(nnx.Module):
     def __init__(self, config: DLMConfig, rngs: nnx.Rngs):
         self.block_size = config.block_size  # Use for generation.
         self.context_len = config.context_len

@@ -6,7 +6,7 @@ from flax import nnx
 
 from chardlm.checkpoint import Checkpointer
 from chardlm.dataset import load_shakespeare_dataset
-from chardlm.model import DLMConfig, NanoDiffusionLM
+from chardlm.model import CharDLM, DLMConfig
 from chardlm.utils import setup_logging
 
 setup_logging()
@@ -25,7 +25,7 @@ dlm_config = DLMConfig(
 )
 rngs = nnx.Rngs(44)
 
-model = NanoDiffusionLM(dlm_config, rngs=rngs)
+model = CharDLM(dlm_config, rngs=rngs)
 model = checkpointer.load_model_only(model)
 logger.info(f"DLM Config: {dlm_config}")
 
@@ -44,7 +44,7 @@ print(
         model.fast_dllm_decode(
             dataset,
             prompt=context[0].tolist(),
-            confidence_threshold=0.9,
+            confidence_threshold=0.3,
         ).tolist()
     )
 )
