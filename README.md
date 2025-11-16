@@ -1,4 +1,4 @@
-# nano-diffusion-jax
+# CharDLLM
 
 Character-level diffusion language model implemented in JAX.
 
@@ -24,11 +24,11 @@ pip install -e .
 ### Training
 
 ```bash
-python train.py
+python train_diffusion.py
 ```
 
 ### Generation
 
 ```bash
-python generate.py
+python generate_diffusion.py
 ```
