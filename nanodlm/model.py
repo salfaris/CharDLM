@@ -302,6 +302,10 @@ class NanoDiffusionLM(nnx.Module):
 
         self.mask_token_id = config.mask_token_id
         self.diffusion_steps = config.diffusion_steps
+        # Linear schedule timestep
+        self.mask_schedule = jnp.linspace(
+            1.0 / self.diffusion_steps, 1.0, self.diffusion_steps
+        )
 
         self.token_embedding_table = nnx.Embed(
             num_embeddings=config.vocab_size, features=config.n_embd, rngs=rngs
@@ -352,10 +356,7 @@ class NanoDiffusionLM(nnx.Module):
         """Corrupt input tokens based on timesteps using masking strategy."""
         B, T = idx.shape
 
-        num_timesteps = self.diffusion_steps
-        # Linear schedule timestep
-        mask_schedule = jnp.linspace(1.0 / num_timesteps, 1.0, num_timesteps)
-        prob_mask = mask_schedule[timesteps].reshape(-1, 1)  # Shape (B, 1)
+        prob_mask = self.mask_schedule[timesteps].reshape(-1, 1)  # Shape (B, 1)
 
         random_vals = rngs.uniform(shape=(B, T))
         mask = random_vals < prob_mask  # Shape (B, T), dtype=bool
