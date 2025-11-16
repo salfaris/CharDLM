@@ -33,7 +33,7 @@ class TrainConfig:
     smol: bool = True
 
     batch_size: int = 64 if not smol else 32
-    max_iters: int = 5000
+    max_iters: int = 20000 if not smol else 5000
     eval_interval: int = 500
     learning_rate: float = 3e-4 if not smol else 1e-3
     eval_iters: int = 200
