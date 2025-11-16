@@ -12,12 +12,14 @@ from chardlm.utils import setup_logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
-checkpointer = Checkpointer(name="nanodlm")
+smol = False
+ckpt_name = "chardlm-smol" if smol else "chardlm-big"
+checkpointer = Checkpointer(name=ckpt_name)
 
 dataset = load_shakespeare_dataset()
 
 dlm_config = DLMConfig(
-    smol=True,
+    smol=smol,
     vocab_size=dataset.vocab_size,
     mask_token_id=dataset.mask_token_id,
 )

@@ -25,12 +25,16 @@ log_system_info()
 # For function signatures via type hints
 TrainModel = NanoDiffusionLM
 
+smol = False
+ckpt_name = "chardlm-smol" if smol else "chardlm-big"
+checkpointer = Checkpointer(name=ckpt_name)
+
 
 @dataclass
 class TrainConfig:
     """Configuration for training."""
 
-    smol: bool = True
+    smol: bool = smol
 
     batch_size: int = 64 if not smol else 32
     max_iters: int = 20000 if not smol else 5000
@@ -163,7 +167,7 @@ metrics = nnx.MultiMetric(loss=nnx.metrics.Average("loss"))
 
 training_start_time = time.perf_counter()
 
-checkpointer = Checkpointer(name="nanodlm")
+checkpointer = Checkpointer(name=ckpt_name)
 
 for iters in range(train_config.max_iters):
     xb, _ = dataset.get_batch_jit(
