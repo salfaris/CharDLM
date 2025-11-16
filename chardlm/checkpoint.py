@@ -54,8 +54,8 @@ class Checkpointer:
         )
         with ocp.CheckpointManager(self.ckpt_dir, options=options) as manager:
             to_save = ocp.args.Composite(
-                model_state=ocp.args.PyTreeSave(item=nnx.state(model)),  # type: ignore
-                optimizer_state=ocp.args.PyTreeSave(item=nnx.state(optimizer)),  # type: ignore
+                model_state=ocp.args.StandardSave(item=nnx.state(model)),  # type: ignore
+                optimizer_state=ocp.args.StandardSave(item=nnx.state(optimizer)),  # type: ignore
             )
             manager.save(step, args=to_save)
 
@@ -75,8 +75,8 @@ class Checkpointer:
             restored = read_manager.restore(
                 step,
                 args=ocp.args.Composite(
-                    model_state=ocp.args.PyTreeRestore(item=nnx.state(model)),  # type: ignore
-                    optimizer_state=ocp.args.PyTreeRestore(item=nnx.state(optimizer)),  # type: ignore
+                    model_state=ocp.args.StandardRestore(item=nnx.state(model)),  # type: ignore
+                    optimizer_state=ocp.args.StandardRestore(item=nnx.state(optimizer)),  # type: ignore
                 ),
             )
 
@@ -102,7 +102,7 @@ class Checkpointer:
             restored = read_manager.restore(
                 step,
                 args=ocp.args.Composite(
-                    model_state=ocp.args.PyTreeRestore(item=nnx.state(model)),  # type: ignore
+                    model_state=ocp.args.StandardRestore(item=nnx.state(model)),  # type: ignore
                 ),
             )
 
