@@ -25,7 +25,7 @@ class TransformerConfig:
 
     def __post_init__(self):
         if self.block_size is None:
-            self.block_size = 8 if self.smol else 256
+            self.block_size = 128 if self.smol else 256
 
         if self.n_embd is None:
             self.n_embd = 32 if self.smol else 384
@@ -38,13 +38,6 @@ class TransformerConfig:
 
         if self.dropout_rate is None:
             self.dropout_rate = 0.0 if self.smol else 0.2
-
-
-@dataclass
-class GPTConfig(TransformerConfig):
-    """Configuration for GPT model."""
-
-    pass
 
 
 @dataclass
@@ -62,9 +55,6 @@ class DLMConfig(TransformerConfig):
     def __post_init__(self):
         # Call parent __post_init__ to initialize inherited fields
         super().__post_init__()
-
-        # Override block_size for DLM (different from TransformerConfig)
-        self.block_size = 128 if self.smol else 256
 
         # Set context_len based on smol if not explicitly provided
         if self.context_len is None:
@@ -176,148 +166,6 @@ class Block(nnx.Module):
         x = x + self.sa(self.ln1(x))
         x = x + self.ffwd(self.ln2(x))
         return x
-
-
-class GPT(nnx.Module):
-    def __init__(self, config: TransformerConfig, rngs: nnx.Rngs):
-        self.block_size = config.block_size  # Use for generation.
-
-        assert config.vocab_size is not None
-
-        self.token_embedding_table = nnx.Embed(
-            num_embeddings=config.vocab_size, features=config.n_embd, rngs=rngs
-        )
-        self.positional_embedding_table = nnx.Embed(
-            num_embeddings=self.block_size, features=config.n_embd, rngs=rngs
-        )
-        self.blocks = nnx.Sequential(
-            *[Block(config=config, rngs=rngs) for _ in range(config.n_layer)]
-        )
-        self.ln_f = nnx.LayerNorm(config.n_embd, rngs=rngs)  # Final layer norm
-        self.lm_head = nnx.Linear(config.n_embd, config.vocab_size, rngs=rngs)
-
-    def __call__(self, idx: jnp.ndarray) -> jnp.ndarray:
-        _, T = idx.shape
-
-        # Think of logits as scores for the next char in the sequence.
-        tok_emb = self.token_embedding_table(idx)  # (Batch, Time, Channel) = (B, T, C)
-        pos_emb = self.positional_embedding_table(jnp.arange(T))  # (T, C)
-
-        # (B, T, C) + (T, C) --> (B, T, C) + (1, T, C) = (B, T, C).
-        # Note: not adding dimensions here, but we are showing how jax infers the batch
-        # dimension in `pos_embd` and right-shift (T, C) -> (1, T, C) similar to in
-        # pytorch.
-        x = tok_emb + pos_emb
-        x = self.blocks(x)  # (B, T, C)
-        x = self.ln_f(x)  # (B, T, C)
-        logits = self.lm_head(x)  # (B, T, VOCAB_SIZE)
-
-        return logits
-
-    @nnx.jit
-    def generate_step(self, padded_tokens, sample_index, rngs):
-        logits = self(padded_tokens)
-
-        # logits = logits[:, sample_index, :].squeeze(0)  # this is not jit-able
-        logits = logits[0][sample_index]
-
-        # sample_from equiv.
-        next_token = rngs.categorical(logits)
-
-        return next_token
-
-    def generate_text(
-        self,
-        dataset: CharacterLevelDataset,
-        max_tokens: int,
-        start_tokens: list,
-        rngs,
-    ):
-        generated = []
-
-        print(dataset.decode(start_tokens), flush=True, end="")
-        for _ in range(max_tokens):
-            sample_index = len(start_tokens) + len(generated) - 1
-
-            padded_tokens = (
-                start_tokens
-                + generated
-                + [0] * (self.block_size - len(start_tokens) - len(generated))
-            )
-            padded_tokens = padded_tokens[-self.block_size :]  # Truncate to block size
-            padded_tokens = jnp.array(padded_tokens).reshape(1, -1)
-
-            next_token = int(self.generate_step(padded_tokens, sample_index, rngs))  # type: ignore
-            generated.append(next_token)
-            print(dataset.decode([next_token]), flush=True, end="")
-
-        return dataset.decode(start_tokens + generated)
-
-    @nnx.jit(static_argnums=(2,))
-    def generate_fast(
-        self, idx: jnp.ndarray, max_new_tokens: int, rngs: nnx.Rngs
-    ) -> jnp.ndarray:
-        block_size = self.block_size
-        B, T = idx.shape
-
-        # Pre-allocate output array with final size
-        output_tokens = jnp.zeros((B, T + max_new_tokens), dtype=jnp.int32)
-        output_tokens = output_tokens.at[:, :T].set(idx)
-
-        # Extract the key ONCE before the scan
-        initial_key = rngs()
-
-        def generate_step(carry, step_idx):
-            tokens, key = carry
-            current_pos = T + step_idx
-
-            key, subkey = jax.random.split(key)
-
-            # Optionally pad on th e left
-            effective_length = jnp.minimum(block_size, current_pos)
-            start_idx = jnp.maximum(0, current_pos - block_size)
-            # Crop idx to the last block_size tokens (since we are now doing pos encoding)
-            # idx_cond = current_idx[:, -block_size:]
-            idx_cond = jax.lax.dynamic_slice(tokens, (0, start_idx), (B, block_size))
-            # If current_pos < block_size, idx_cond's right part should be padded on the left.
-
-            # Pad idx_cond on the left if length < block_size
-            idx_cond = jnp.where(
-                jnp.arange(block_size) < block_size - effective_length, 0, idx_cond
-            )
-
-            # Get the predictions
-            logits = self(idx_cond)  # dim = (B, C)
-
-            # Focus only on the last time step (get idx -1 on Time index)
-            logits = logits[:, -1, :]  # dim = (B, C)
-
-            # jax.random.categorical is more similar to torch.multinomial.
-            # Notice we don't require apply softmax to logits since rngs.categorical
-            # expects logits rather than probabilities.
-            # Also notice, reshape (B, 1) because cannot concat (B, T) with (B,), require
-            # reshape to concat (B, T) with (B, 1) --> (B, T+1).
-            # idx_next = jax.random.categorical(subkey, logits).reshape(
-            #     logits.shape[0], 1
-            # )  # dim = (B,) -> (B, 1)
-            idx_next = jax.random.categorical(subkey, logits)
-
-            # # Append sampled index to the running idx sequence
-            # new_idx = jnp.concat([current_idx, idx_next], axis=1)  # dim = (B, T+1)
-            tokens = tokens.at[:, current_pos].set(idx_next)
-
-            return (tokens, key), None
-
-        (final_tokens, _), _ = jax.lax.scan(
-            generate_step,
-            (
-                output_tokens,
-                initial_key,
-            ),  # Note: idx is (B, T) array of indices in current context.
-            jnp.arange(max_new_tokens),
-        )
-
-        return final_tokens
 
 
 class NanoDiffusionLM(nnx.Module):
