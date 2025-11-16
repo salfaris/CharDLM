@@ -195,7 +195,9 @@ for iters in range(train_config.max_iters):
 # Generate from the model
 model.eval()
 
-context = jnp.zeros((1, 1), dtype=jnp.int32)
+context_str = "ROMEO:"
+context = jnp.array([dataset.encode(context_str)], dtype=jnp.int32)
+
 logger.info("Generating from trained model:")
 print("--" * 20)
 print(
