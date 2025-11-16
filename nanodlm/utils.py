@@ -77,7 +77,7 @@ def log_model_size(model: Any) -> None:
     total_params = sum(map(lambda x: np.prod(x.shape), jax.tree.leaves(params)))
     total_bytes_approx = total_params * 4  # assume float32, 4 bytes per param
     logger.info(
-        f"Total parameters: {total_params:,} ({total_bytes_approx / 1024:.1f} KB)"
+        f"Total parameters: {int(total_params):,} ({total_bytes_approx / 1024:.1f} KB)"
     )
 
 
