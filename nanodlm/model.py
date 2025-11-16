@@ -38,17 +38,30 @@ class DLMConfig(TransformerConfig):
     smol: bool = True
 
     is_causal: bool = False
-    block_size: int = 256 if not smol else 128
-
     diffusion_steps: int = 100
     mask_token_id: int | None = None
 
-    # Context length before which no tokens are masked. This is a hyperparam for the
-    # expected prompt input. The prompt 'ROMEO: ' has context length 7. We are going
-    # to freeze this to 16 for non-smol and 8 for smol models which is an arbitrary
-    # choice.
-    context_len: int = 16 if not smol else 8
-    assert context_len <= TransformerConfig.block_size
+    # These will be set in __post_init__ based on smol value
+    block_size: int = None  # type: ignore
+    context_len: int = None  # type: ignore
+
+    def __post_init__(self):
+        # Set block_size based on smol if not explicitly provided
+        if self.block_size is None:
+            self.block_size = 128 if self.smol else 256
+
+        # Set context_len based on smol if not explicitly provided
+        if self.context_len is None:
+            # Context length before which no tokens are masked. This is a hyperparam for the
+            # expected prompt input. The prompt 'ROMEO: ' has context length 7. We are going
+            # to freeze this to 16 for non-smol and 8 for smol models which is an arbitrary
+            # choice.
+            self.context_len = 8 if self.smol else 16
+
+        # Validate context_len <= block_size
+        assert (
+            self.context_len <= self.block_size
+        ), f"context_len ({self.context_len}) must be <= block_size ({self.block_size})"
 
 
 class Buffer(nnx.Variable):
