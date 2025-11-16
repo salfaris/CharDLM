@@ -414,7 +414,8 @@ class NanoDiffusionLM(nnx.Module):
         assert new_tokens_len > 0
 
         if dllm_block_size is None:
-            dllm_block_size = self.block_size // 2
+            # dllm_block_size = self.block_size // 2
+            dllm_block_size = self.block_size
         assert dllm_block_size <= self.block_size
 
         # This is K in the fast DLLM paper
