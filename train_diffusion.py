@@ -106,8 +106,7 @@ def train_step(
     tb = rngs.randint(shape=(B,), minval=0, maxval=dlm_config.diffusion_steps)
 
     # Corrupt input
-    context_len = 2
-    idx_corrupted, mask = model.corrupt_input(idx, context_len, tb, rngs)
+    idx_corrupted, mask = model.corrupt_input(idx, tb, rngs)
 
     grad_fn = nnx.value_and_grad(loss_fn, has_aux=True)
     # Notice we don't require a "zero grad" operation like in pytorch where we would
@@ -131,8 +130,7 @@ def estimate_loss(rngs: nnx.Rngs, model: TrainModel):
         B, _ = x.shape
         t = step_rng.randint(shape=(B,), minval=0, maxval=dlm_config.diffusion_steps)
 
-        context_len = 2
-        x, mask = model.corrupt_input(x, context_len, t, step_rng)
+        x, mask = model.corrupt_input(x, t, step_rng)
 
         loss, _ = loss_fn(model, x, y, t, mask)
         return step_rng, loss  # nnx.scan splits rngs internally
