@@ -42,6 +42,9 @@ class DLMConfig(TransformerConfig):
     diffusion_steps: int = 1000 if not smol else 100
     mask_token_id: int | None = None
 
+    context_len: int = 16 if not smol else 4
+    assert context_len <= TransformerConfig.block_size
+
 
 class Buffer(nnx.Variable):
     pass
@@ -286,9 +289,11 @@ class GPT(nnx.Module):
 class NanoDiffusionLM(nnx.Module):
     def __init__(self, config: DLMConfig, rngs: nnx.Rngs):
         self.block_size = config.block_size  # Use for generation.
+        self.context_len = config.context_len
 
         assert config.vocab_size is not None
         assert config.mask_token_id is not None
+        assert self.context_len is not None
 
         self.mask_token_id = config.mask_token_id
         self.diffusion_steps = config.diffusion_steps
@@ -337,7 +342,7 @@ class NanoDiffusionLM(nnx.Module):
         return logits
 
     def corrupt_input(
-        self, idx: jnp.ndarray, context_len: int, timesteps: jnp.ndarray, rngs: nnx.Rngs
+        self, idx: jnp.ndarray, timesteps: jnp.ndarray, rngs: nnx.Rngs
     ) -> tuple[jnp.ndarray, jnp.ndarray]:
         """Corrupt input tokens based on timesteps using masking strategy."""
         B, T = idx.shape
@@ -351,51 +356,12 @@ class NanoDiffusionLM(nnx.Module):
         mask = random_vals < prob_mask  # Shape (B, T), dtype=bool
 
         # Never mask the first block_size tokens
-        mask = mask.at[:, :context_len].set(False)
+        mask = mask.at[:, : self.context_len].set(False)
 
         # Create corrupted input by replacing masked positions with mask token id
         corrupted_idx = jnp.where(mask, self.mask_token_id, idx)
 
         return corrupted_idx, mask
-
-    # @nnx.jit
-    # def generate_step(self, padded_tokens, sample_index, rngs):
-    #     logits = self(padded_tokens)
-
-    #     # logits = logits[:, sample_index, :].squeeze(0)  # this is not jit-able
-    #     logits = logits[0][sample_index]
-
-    #     # sample_from equiv.
-    #     next_token = rngs.categorical(logits)
-
-    #     return next_token
-
-    # def generate_text(
-    #     self,
-    #     dataset: CharacterLevelDataset,
-    #     max_tokens: int,
-    #     start_tokens: list,
-    #     rngs,
-    # ):
-    #     generated = []
-
-    #     print(dataset.decode(start_tokens), flush=True, end="")
-    #     for _ in range(max_tokens):
-    #         sample_index = len(start_tokens) + len(generated) - 1
-
-    #         padded_tokens = (
-    #             start_tokens
-    #             + generated
-    #             + [0] * (self.block_size - len(start_tokens) - len(generated))
-    #         )
-    #         padded_tokens = padded_tokens[-self.block_size :]  # Truncate to block size
-    #         padded_tokens = jnp.array(padded_tokens).reshape(1, -1)
-
-    #         next_token = int(self.generate_step(padded_tokens, sample_index, rngs))  # type: ignore
-    #         generated.append(next_token)
-    #         print(dataset.decode([next_token]), flush=True, end="")
-
-    #     return dataset.decode(start_tokens + generated)
 
     def fast_dllm_decode(
         self,
@@ -424,7 +390,14 @@ class NanoDiffusionLM(nnx.Module):
                 ),
             ]
         )
+        print(x)
+        # prompt_len = 4, k = 1, self.block_size = 8
+        # s = 4 + (1 - 1) * 8 = 4
+        # e = min(4 + 1 * 8, 4 + 16) = 12
 
+        # prompt_len = 4, k = 2, self.block_size = 8
+        # s = 4 + (2 - 1) * 8 = 12
+        # e = min(4 + 2 * 8, 4 + 16 ) = 20 --> 20 capped to 20
         for k in range(1, num_blocks + 1):
             s = prompt_len + (k - 1) * self.block_size
             e = min(prompt_len + k * self.block_size, seq_len)
@@ -432,8 +405,9 @@ class NanoDiffusionLM(nnx.Module):
             for t in range(1, num_diffusion_steps + 1):
                 # shape = (1,) here because we assume single text to generate.
                 t_batch = jnp.full(shape=(1,), fill_value=t, dtype=jnp.int32)
+                t_batch = jnp.clip(t_batch, 0, self.diffusion_steps - 1)
 
-                logits = self(x.reshape(1, -1), t_batch).squeeze(0)
+                logits = self(x[s:e].reshape(1, -1), t_batch).squeeze(0)
 
                 block_mask = x[s:e] == dataset.mask_token_id
                 masked_positions = jnp.nonzero(block_mask)[0] + s
@@ -456,5 +430,7 @@ class NanoDiffusionLM(nnx.Module):
 
                 if jnp.all(x[s:e] != dataset.mask_token_id):
                     break
+
+            print(x)
 
         return x
