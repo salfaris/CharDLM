@@ -42,7 +42,6 @@ print("--" * 20)
 print(
     dataset.decode(
         model.fast_dllm_decode(
-            dataset,
             prompt=context[0].tolist(),
             confidence_threshold=0.3,
         ).tolist()
