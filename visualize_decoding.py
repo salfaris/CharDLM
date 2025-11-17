@@ -4,6 +4,11 @@ import sys
 import time
 from typing import List
 
+# Suppress absl warnings
+import absl.logging
+
+absl.logging.set_verbosity(absl.logging.ERROR)
+
 import jax.numpy as jnp
 from flax import nnx
 
@@ -313,4 +318,5 @@ def main():
 
 
 if __name__ == "__main__":
+    main()
     main()
