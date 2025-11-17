@@ -4,6 +4,11 @@ Character-level diffusion language model implemented in JAX.
 
 Block decoding using NVIDIA's [Fast-dLLM](https://arxiv.org/pdf/2505.22618) algorithm (Wu et al., 2025).
 
+
+The following gif is Fast-dLLM decoding with block size of 4 using a 10.8M parameter CharDLM model trained with 256 characters context length: 
+![decoding](docs/decoding.gif)
+
+Sample evaluation:
 ![sample-eval](docs/sample_eval.png)
 
 ## Setup
