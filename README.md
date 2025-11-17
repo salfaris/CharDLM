@@ -4,6 +4,8 @@ Character-level diffusion language model implemented in JAX.
 
 Block decoding using NVIDIA's [Fast-dLLM](https://arxiv.org/pdf/2505.22618) algorithm (Wu et al., 2025).
 
+![sample-eval](docs/sample_eval.png)
+
 ## Setup
 
 ### Dataset
