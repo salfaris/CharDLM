@@ -50,23 +50,22 @@ class DLMConfig(TransformerConfig):
     diffusion_steps: int = 100
     mask_token_id: int | None = None
 
-    context_len: int = None  # type: ignore
+    unmasked_context_len: int = None  # type: ignore
 
     def __post_init__(self):
         # Call parent __post_init__ to initialize inherited fields
         super().__post_init__()
 
-        # Set context_len based on smol if not explicitly provided
-        if self.context_len is None:
-            # Context length before which no tokens are masked. This is a hyperparam for the
-            # expected prompt input. The prompt 'ROMEO: ' has context length 7. We are going
-            # to freeze this to 8 which is an arbitrary choice.
-            self.context_len = 8
+        # Set unmasked_context_len based on smol if not explicitly provided
+        if self.unmasked_context_len is None:
+            # Maximum context length before which no tokens are masked.
+            # During training, we'll randomly sample from [0, unmasked_context_len]
+            self.unmasked_context_len = 16
 
-        # Validate context_len <= block_size
+        # Validate unmasked_context_len <= block_size
         assert (
-            self.context_len <= self.block_size
-        ), f"context_len ({self.context_len}) must be <= block_size ({self.block_size})"
+            self.unmasked_context_len <= self.block_size
+        ), f"unmasked_context_len ({self.unmasked_context_len}) must be <= block_size ({self.block_size})"
 
 
 class Buffer(nnx.Variable):
@@ -170,11 +169,11 @@ class Block(nnx.Module):
 class CharDLM(nnx.Module):
     def __init__(self, config: DLMConfig, rngs: nnx.Rngs):
         self.block_size = config.block_size  # Use for generation.
-        self.context_len = config.context_len
+        self.unmasked_context_len = config.unmasked_context_len
 
         assert config.vocab_size is not None
         assert config.mask_token_id is not None
-        assert self.context_len is not None
+        assert self.unmasked_context_len is not None
 
         self.mask_token_id = config.mask_token_id
         self.diffusion_steps = config.diffusion_steps
@@ -229,7 +228,11 @@ class CharDLM(nnx.Module):
     def corrupt_input(
         self, idx: jnp.ndarray, timesteps: jnp.ndarray, rngs: nnx.Rngs
     ) -> tuple[jnp.ndarray, jnp.ndarray]:
-        """Corrupt input tokens based on timesteps using masking strategy."""
+        """Corrupt input tokens based on timesteps using masking strategy.
+
+        Randomly samples a context length from [0, unmasked_context_len] for each batch item.
+        Tokens before this context length are never masked.
+        """
         B, T = idx.shape
 
         prob_mask = self.mask_schedule[timesteps].reshape(-1, 1)  # Shape (B, 1)
@@ -237,8 +240,19 @@ class CharDLM(nnx.Module):
         random_vals = rngs.uniform(shape=(B, T))
         mask = random_vals < prob_mask  # Shape (B, T), dtype=bool
 
-        # Never mask the first block_size tokens
-        mask = mask.at[:, : self.context_len].set(False)
+        # Sample random context length for each batch item from [0, unmasked_context_len]
+        # Use JAX random for JIT compatibility
+        random_context_lens = rngs.randint(
+            minval=0, maxval=self.unmasked_context_len + 1, shape=(B,)
+        )  # Shape (B,), values in [0, unmasked_context_len]
+
+        # Create a mask that prevents masking tokens before random context length
+        # For each batch item, mask[:, :random_context_lens[i]] = False
+        position_indices = jnp.arange(T)  # Shape (T,)
+        context_mask = (
+            position_indices[None, :] < random_context_lens[:, None]
+        )  # Shape (B, T)
+        mask = mask & ~context_mask
 
         # Create corrupted input by replacing masked positions with mask token id
         corrupted_idx = jnp.where(mask, self.mask_token_id, idx)
