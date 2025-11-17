@@ -308,7 +308,7 @@ def main():
         prompt=prompt,
         dllm_block_size=dllm_block_size,
         confidence_threshold=0.3,
-        delay=0.5,  # Delay between steps in seconds
+        delay=0.1,  # Delay between steps in seconds
     )
 
 
