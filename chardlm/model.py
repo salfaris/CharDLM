@@ -25,7 +25,7 @@ class TransformerConfig:
 
     def __post_init__(self):
         if self.block_size is None:
-            self.block_size = 128 if self.smol else 512
+            self.block_size = 128 if self.smol else 256
 
         if self.n_embd is None:
             self.n_embd = 32 if self.smol else 384
