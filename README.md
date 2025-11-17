@@ -6,7 +6,7 @@ Block decoding using NVIDIA's [Fast-dLLM](https://arxiv.org/pdf/2505.22618) algo
 
 ## Demo
 
-This is what Fast-dLLM decoding with block size of 4 looks like. Here I used a 10.8M parameter CharDLM model trained with 256 characters context length looks like:
+This is what Fast-dLLM decoding with block size of 4 looks like. Here I used a 10.8M parameter CharDLM model trained with 256 characters context length.
 
 ![decoding](docs/decoding.gif)
 
