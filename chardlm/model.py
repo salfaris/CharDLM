@@ -42,7 +42,7 @@ class TransformerConfig:
 
 @dataclass
 class DLMConfig(TransformerConfig):
-    """Configuration for NanoDiffusionLM model."""
+    """Configuration for CharDLM model."""
 
     smol: bool = True
 
@@ -60,9 +60,8 @@ class DLMConfig(TransformerConfig):
         if self.context_len is None:
             # Context length before which no tokens are masked. This is a hyperparam for the
             # expected prompt input. The prompt 'ROMEO: ' has context length 7. We are going
-            # to freeze this to 16 for non-smol and 8 for smol models which is an arbitrary
-            # choice.
-            self.context_len = 8 if self.smol else 16
+            # to freeze this to 8 which is an arbitrary choice.
+            self.context_len = 8
 
         # Validate context_len <= block_size
         assert (
