@@ -15,6 +15,7 @@ class Checkpointer:
     Attributes:
         ckpt_dir: Directory where checkpoints are saved
         max_to_keep: Maximum number of checkpoints to keep (default: 3)
+        verbose: Whether to print checkpoint loading information (default: False)
     """
 
     def __init__(
@@ -22,6 +23,7 @@ class Checkpointer:
         name: str = "nanodlm",
         ckpt_dir: str | Path | None = None,
         max_to_keep: int = MAX_CHECKPOINTS_TO_KEEP,
+        verbose: bool = False,
     ):
         """Initialize the checkpointer.
 
@@ -29,12 +31,14 @@ class Checkpointer:
             name: Name of the checkpoint directory (used if ckpt_dir is None)
             ckpt_dir: Custom checkpoint directory path (optional)
             max_to_keep: Maximum number of checkpoints to keep
+            verbose: Whether to print checkpoint loading information
         """
         if ckpt_dir is None:
             ckpt_dir = DEFAULT_CKPT_BASE_DIR / name
 
         self.ckpt_dir = Path(ckpt_dir)
         self.max_to_keep = max_to_keep
+        self.verbose = verbose
         self._ensure_dir()
 
     def _ensure_dir(self):
@@ -96,8 +100,9 @@ class Checkpointer:
         options = ocp.CheckpointManagerOptions(read_only=True)
         with ocp.CheckpointManager(self.ckpt_dir, options=options) as read_manager:
             step = read_manager.latest_step()
-            print(f"[Checkpointer] Loading model from step {step}")
-            print(f"[Checkpointer] Available steps: {read_manager.all_steps()}")
+            if self.verbose:
+                print(f"[Checkpointer] Loading model from step {step}")
+                print(f"[Checkpointer] Available steps: {read_manager.all_steps()}")
 
             restored = read_manager.restore(
                 step,
@@ -107,5 +112,6 @@ class Checkpointer:
             )
 
         nnx.update(model, restored["model_state"])
-        print(f"[Checkpointer] Successfully loaded model from step {step}")
+        if self.verbose:
+            print(f"[Checkpointer] Successfully loaded model from step {step}")
         return model
