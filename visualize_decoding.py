@@ -268,16 +268,13 @@ def visualize_decoding(
 def main():
     """Run the visualization."""
 
-    # Setup
-    print("\n🚀 Initializing model and dataset...")
-
     rngs = nnx.Rngs(44)
     dataset = load_shakespeare_dataset()
 
     smol = False
     # ckpt_name = "chardlm-smol" if smol else "chardlm-big"
     ckpt_name = "chardlm-big-256block-randomUnmaskedContextLen"
-    checkpointer = Checkpointer(name=ckpt_name)
+    checkpointer = Checkpointer(name=ckpt_name, verbose=False)
 
     config = DLMConfig(
         smol=smol,
@@ -288,8 +285,6 @@ def main():
     model = CharDLM(config, rngs=rngs)
     model = checkpointer.load_model_only(model)
     model.eval()
-
-    print("✓ Model loaded successfully!")
 
     # Get a random sample from training set
     x_batch, _ = dataset.get_batch_jit(
