@@ -5,10 +5,10 @@ from typing import Literal, cast
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 import optax
 from flax import nnx
 
+import wandb
 from chardlm.checkpoint import Checkpointer
 from chardlm.dataset import load_shakespeare_dataset
 from chardlm.model import CharDLM, DLMConfig
@@ -19,8 +19,6 @@ from chardlm.utils import log_model_size, log_system_info, setup_logging
 
 setup_logging()
 logger = logging.getLogger(__name__)
-
-log_system_info()
 
 
 smol = False
@@ -52,6 +50,17 @@ dlm_config = DLMConfig(
     mask_token_id=dataset.mask_token_id,
 )
 
+# Initialize wandb
+wandb.init(
+    project="chardlm",
+    name=ckpt_name,
+    config={
+        "dlm_config": dlm_config.__dict__,
+        "train_config": train_config.__dict__,
+    },
+)
+
+log_system_info()
 logger.info("--" * 12)
 logger.info(f"DLM Config: {dlm_config}")
 logger.info(f"Train Config: {train_config}")
@@ -189,6 +198,16 @@ for iters in range(train_config.max_iters):
             f"step {iters}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}"
         )
 
+        # Log to wandb
+        wandb.log(
+            {
+                "train/loss": float(losses["train"]),
+                "val/loss": float(losses["val"]),
+                "step": iters,
+            },
+            step=iters,
+        )
+
         # Save checkpoint
         checkpointer.save(iters, model, optimizer)
 
@@ -215,3 +234,7 @@ print("--" * 20)
 # Total time elapsed
 time_elapsed = time.perf_counter() - training_start_time
 logger.info(f"\nTotal training time: {time_elapsed:.2f} seconds")
+
+# Log final metrics to wandb
+wandb.log({"training/total_time_seconds": time_elapsed})
+wandb.finish()
