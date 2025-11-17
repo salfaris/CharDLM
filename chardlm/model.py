@@ -4,8 +4,6 @@ import jax
 import jax.numpy as jnp
 from flax import nnx
 
-from chardlm.dataset import CharacterLevelDataset
-
 
 @dataclass
 class TransformerConfig:
@@ -261,7 +259,6 @@ class CharDLM(nnx.Module):
 
     def fast_dllm_decode(
         self,
-        dataset: CharacterLevelDataset,
         prompt: list[int],  # aka context. prompt = context
         confidence_threshold: float,  # tau in the fast DLLM paper
         dllm_block_size: int | None = None,
@@ -290,7 +287,7 @@ class CharDLM(nnx.Module):
                 prompt_tokens,
                 jnp.full(
                     shape=(new_tokens_len,),
-                    fill_value=dataset.mask_token_id,
+                    fill_value=self.mask_token_id,
                     dtype=jnp.int32,
                 ),
             ]
@@ -309,7 +306,7 @@ class CharDLM(nnx.Module):
             # Use scan for the diffusion timesteps within each block
             def diffusion_step(x_inner, t):
                 # Check if block is fully unmasked
-                block_mask = x_inner[s:e] == dataset.mask_token_id
+                block_mask = x_inner[s:e] == self.mask_token_id
                 still_has_masked = jnp.any(block_mask)
 
                 def do_step(x_inner):
