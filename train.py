@@ -7,6 +7,8 @@ import jax
 import jax.numpy as jnp
 import optax
 from flax import nnx
+from jax.experimental import mesh_utils
+from jax.sharding import Mesh, NamedSharding, PartitionSpec
 
 import wandb
 from chardlm.checkpoint import Checkpointer
@@ -32,7 +34,7 @@ class TrainConfig:
 
     smol: bool = smol
 
-    batch_size: int = 128 if not smol else 32
+    batch_size: int = 128 if not smol else 16
     max_iters: int = 20000 if not smol else 5000
     eval_interval: int = 500
     learning_rate: float = 3e-4 if not smol else 1e-3
@@ -61,7 +63,25 @@ wandb.init(
 )
 
 log_system_info()
+
+# Setup multi-GPU
+num_devices = jax.device_count()
+logger.info(f"Found {num_devices} devices: {jax.devices()}")
+
+# Ensure we have at least 2 GPUs
+if num_devices < 2:
+    logger.warning(
+        f"Only {num_devices} device(s) available. Multi-GPU training requires at least 2 devices."
+    )
+    logger.warning("Training will proceed with available devices.")
+
+# Batch size per device - total batch size will be batch_size * num_devices
+train_config.batch_size = train_config.batch_size // num_devices
+
 logger.info("--" * 12)
+logger.info(f"Number of devices: {num_devices}")
+logger.info(f"Total batch size: {train_config.batch_size * num_devices}")
+logger.info(f"Per-device batch size: {train_config.batch_size}")
 logger.info(f"DLM Config: {dlm_config}")
 logger.info(f"Train Config: {train_config}")
 logger.info("--" * 12)
@@ -127,8 +147,8 @@ def train_step(
     optimizer.update(model, grads)
 
 
-@nnx.jit
-def estimate_loss(rngs: nnx.Rngs, model: CharDLM):
+@nnx.jit(static_argnames=("data_sharding",))
+def estimate_loss(rngs: nnx.Rngs, model: CharDLM, data_sharding: NamedSharding):
     model.eval()
 
     @nnx.scan(in_axes=(nnx.Carry, 0), out_axes=(nnx.Carry, 0))
@@ -149,9 +169,12 @@ def estimate_loss(rngs: nnx.Rngs, model: CharDLM):
             rngs=rngs,
             split=cast(Literal["train", "val"], split),
             num_samples=train_config.eval_iters,
-            batch_size=train_config.batch_size,
+            batch_size=train_config.batch_size * num_devices,
             block_size=dlm_config.block_size,
         )
+
+        # Shard data across devices for evaluation
+        x = jax.device_put(x, data_sharding)
 
         # Scan over pre-generated indices, this pattern enables jit!
         # Scanning is done over the num_samples dimension which is the leading
@@ -166,6 +189,16 @@ def estimate_loss(rngs: nnx.Rngs, model: CharDLM):
 model = CharDLM(dlm_config, rngs=rngs)
 log_model_size(model)
 
+
+# Create a mesh with all devices
+devices = mesh_utils.create_device_mesh((num_devices,))
+mesh = Mesh(devices, axis_names=("devices",))
+
+logger.info(f"Created mesh with {num_devices} devices")
+
+# Define sharding for data (shard along batch dimension)
+data_sharding = NamedSharding(mesh, PartitionSpec("devices", None))
+
 # Train the function
 optimizer = nnx.Optimizer(
     model, optax.adamw(learning_rate=train_config.learning_rate), wrt=nnx.Param
@@ -177,22 +210,26 @@ training_start_time = time.perf_counter()
 checkpointer = Checkpointer(name=ckpt_name)
 
 for iters in range(train_config.max_iters):
+    # Get batch with size batch_size * num_devices for sharding across devices
     xb, _ = dataset.get_batch_jit(
         rngs=rngs,
         split="train",
         num_samples=1,
-        batch_size=train_config.batch_size,
+        batch_size=train_config.batch_size * num_devices,
         block_size=dlm_config.block_size,
     )
     # Squeeze the num_samples dim, for train_step, num_samples is 1 anyways
     xb = jnp.squeeze(xb, axis=0)
+
+    # Shard data across devices
+    xb = jax.device_put(xb, data_sharding)
 
     # Evaluate the loss
     train_step(model, optimizer, metrics, xb, rngs=rngs)
 
     # Every once in a while evaluate the loss on train and val sets
     if iters % train_config.eval_interval == 0:
-        losses = estimate_loss(rngs, model)
+        losses = estimate_loss(rngs, model, data_sharding)
 
         logger.info(
             f"step {iters}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}"
